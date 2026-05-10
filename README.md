@@ -156,3 +156,4 @@ Notes:
 - Binance fetch failure falls back to mock prices.
 - Missing OPENAI_API_KEY returns fallback AI prediction.
 - Backtesting uses educational SMA crossover logic.
+# realtime
