@@ -53,10 +53,10 @@ function addCompatLineSeries(chart, options) {
   throw new Error('Unsupported lightweight-charts version: no line API found');
 }
 
-export default function MarketChart({ selectedSymbol, onSymbolChange }) {
+export default function MarketChart({ selectedSymbol, onSymbolChange, defaultInterval, defaultLimit, compact }) {
   const { isDark } = useTheme();
   const [symbol, setSymbol] = useState(selectedSymbol || MARKET_SYMBOLS[0].value);
-  const [interval, setChartInterval] = useState('1h');
+  const [interval, setChartInterval] = useState(defaultInterval || '1h');
   const [candles, setCandles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
@@ -83,7 +83,7 @@ export default function MarketChart({ selectedSymbol, onSymbolChange }) {
       setLoading(true);
       try {
         const { data } = await api.get('/api/market/history', {
-          params: { symbol, interval, limit: 120 },
+          params: { symbol, interval, limit: defaultLimit || 120 },
         });
         if (mounted) {
           setCandles(data.candles || []);
@@ -152,7 +152,7 @@ export default function MarketChart({ selectedSymbol, onSymbolChange }) {
         horzLine: { color: isDark ? 'rgba(246, 185, 59, 0.45)' : 'rgba(176, 123, 22, 0.55)' },
       },
       width: chartContainerRef.current.clientWidth,
-      height: chartContainerRef.current.clientHeight || 460,
+      height: chartContainerRef.current.clientHeight || (compact ? 220 : 460),
     });
 
     const candlestickSeries = addCompatCandlestickSeries(chart, {
@@ -248,7 +248,7 @@ export default function MarketChart({ selectedSymbol, onSymbolChange }) {
   }, [candleData, ma7, ma25, ma99]);
 
   return (
-    <div className="card market-chart-card">
+    <div className={compact ? 'card market-chart-card compact' : 'card market-chart-card'}>
       <div className="row space-between wrap gap">
         <div>
           <h3 className="chart-title">{symbol}</h3>
@@ -308,7 +308,13 @@ export default function MarketChart({ selectedSymbol, onSymbolChange }) {
       </div>
 
       <div className="market-chart-wrap">
-        {loading && !candles.length && <p className="muted">Loading chart...</p>}
+        {loading && !candles.length && (
+          <div className="chart-skeleton">
+            <div className="skeleton-line chart-skeleton-line" />
+            <div className="skeleton-card chart-skeleton-card" />
+            <div className="skeleton-line chart-skeleton-line short" />
+          </div>
+        )}
         {!loading && errorText && <p className="status-bad">{errorText}</p>}
         <div ref={chartContainerRef} className="candlestick-container" />
         {!!hoverData && (

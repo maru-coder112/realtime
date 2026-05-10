@@ -1,8 +1,10 @@
 const strategyModel = require('../models/strategyModel');
 const backtestModel = require('../models/backtestModel');
 const historicalDataModel = require('../models/historicalDataModel');
+const userModel = require('../models/userModel');
 const { generateMockCandles } = require('../services/historicalDataService');
 const { runSmaCrossoverBacktest } = require('../services/backtestService');
+const { sendUserEmailNotification } = require('../services/notificationService');
 
 async function createStrategy(req, res) {
   const { name, description, parameters } = req.body;
@@ -17,12 +19,58 @@ async function createStrategy(req, res) {
     parameters,
   });
 
+  const user = await userModel.findById(req.user.id);
+  await sendUserEmailNotification(user, {
+    subject: `Strategy saved: ${strategy.name}`,
+    title: 'Strategy saved',
+    message: `Your strategy "${strategy.name}" was saved successfully.`,
+    details: [
+      strategy.description ? `Description: ${strategy.description}` : null,
+      `Strategy ID: ${strategy.id}`,
+    ],
+  });
+
   return res.status(201).json(strategy);
 }
 
 async function listStrategies(req, res) {
   const strategies = await strategyModel.getStrategiesByUser(req.user.id);
   return res.json(strategies);
+}
+
+async function updateStrategy(req, res) {
+  const strategyId = Number(req.params.id);
+  const { name, description, parameters } = req.body;
+  const updated = await strategyModel.updateStrategy(strategyId, req.user.id, {
+    name,
+    description,
+    parameters,
+  });
+
+  if (!updated) {
+    return res.status(404).json({ message: 'Strategy not found' });
+  }
+
+  const user = await userModel.findById(req.user.id);
+  await sendUserEmailNotification(user, {
+    subject: `Strategy updated: ${updated.name}`,
+    title: 'Strategy updated',
+    message: `Your strategy "${updated.name}" was updated successfully.`,
+    details: [`Strategy ID: ${updated.id}`],
+  });
+
+  return res.json(updated);
+}
+
+async function deleteStrategy(req, res) {
+  const strategyId = Number(req.params.id);
+  const deleted = await strategyModel.deleteStrategy(strategyId, req.user.id);
+
+  if (!deleted) {
+    return res.status(404).json({ message: 'Strategy not found' });
+  }
+
+  return res.json({ message: 'Strategy deleted', id: strategyId });
 }
 
 async function runBacktest(req, res) {
@@ -61,6 +109,19 @@ async function runBacktest(req, res) {
     trades: result.trades,
   });
 
+  const user = await userModel.findById(req.user.id);
+  await sendUserEmailNotification(user, {
+    subject: `Backtest completed: ${strategy.name}`,
+    title: 'Backtest completed',
+    message: `Your backtest for "${strategy.name}" finished successfully.`,
+    details: [
+      `Symbol: ${symbol}`,
+      `Interval: ${interval}`,
+      `Return: ${result.metrics?.returnPct != null ? `${Number(result.metrics.returnPct).toFixed(2)}%` : 'N/A'}`,
+      `Sharpe: ${result.metrics?.sharpeRatio != null ? Number(result.metrics.sharpeRatio).toFixed(2) : 'N/A'}`,
+    ],
+  });
+
   return res.status(201).json(saved);
 }
 
@@ -88,6 +149,8 @@ async function getStrategyPerformance(req, res) {
 module.exports = {
   listStrategies,
   createStrategy,
+  updateStrategy,
+  deleteStrategy,
   runBacktest,
   getStrategyPerformance,
 };

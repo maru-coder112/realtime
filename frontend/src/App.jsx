@@ -7,6 +7,10 @@ import NewsPage from './pages/NewsPage';
 import StrategyPage from './pages/StrategyPage';
 import BacktestResultsPage from './pages/BacktestResultsPage';
 import AdminPage from './pages/AdminPage';
+import ProfilePage from './pages/ProfilePage';
+import PortfolioPage from './pages/PortfolioPage';
+import WalletPage from './pages/WalletPage';
+import LiveTradingPage from './pages/LiveTradingPage';
 import { useAuth } from './context/AuthContext';
 import GlobalLightBackground from './components/GlobalLightBackground';
 
@@ -56,6 +60,30 @@ export default function App() {
           }
         />
         <Route
+          path="/wallet"
+          element={
+            <PrivateRoute>
+              <WalletPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/live-trading"
+          element={
+            <PrivateRoute>
+              <LiveTradingPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/portfolio"
+          element={
+            <PrivateRoute>
+              <PortfolioPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
           path="/strategy"
           element={
             <PrivateRoute>
@@ -77,6 +105,14 @@ export default function App() {
             <AdminRoute>
               <AdminPage />
             </AdminRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <PrivateRoute>
+              <ProfilePage />
+            </PrivateRoute>
           }
         />
         <Route

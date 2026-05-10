@@ -27,8 +27,34 @@ async function getStrategiesByUser(userId) {
   return rows;
 }
 
+async function updateStrategy(id, userId, updates) {
+  const { name, description, parameters } = updates;
+  const { rows } = await pool.query(
+    `
+      UPDATE strategies
+      SET name = COALESCE($3, name),
+          description = COALESCE($4, description),
+          parameters = COALESCE($5::jsonb, parameters)
+      WHERE id = $1 AND user_id = $2
+      RETURNING *
+    `,
+    [id, userId, name ?? null, description ?? null, parameters ? JSON.stringify(parameters) : null]
+  );
+  return rows[0];
+}
+
+async function deleteStrategy(id, userId) {
+  const { rows } = await pool.query(
+    'DELETE FROM strategies WHERE id = $1 AND user_id = $2 RETURNING *',
+    [id, userId]
+  );
+  return rows[0];
+}
+
 module.exports = {
   createStrategy,
   getStrategyById,
   getStrategiesByUser,
+  updateStrategy,
+  deleteStrategy,
 };

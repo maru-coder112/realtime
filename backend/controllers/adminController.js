@@ -4,7 +4,7 @@ async function getOverview(req, res) {
   const [usersResult, strategiesResult, backtestsResult, statsResult] = await Promise.all([
     pool.query(
       `
-        SELECT id, username, email, role, email_verified
+        SELECT id, username, email, role, email_verified, virtual_balance
         FROM users
         ORDER BY id DESC
         LIMIT 100
@@ -131,8 +131,63 @@ async function updateUserRole(req, res) {
   return res.json({ user: rows[0], message: 'User role updated' });
 }
 
+async function updateUserVirtualBalance(req, res) {
+  const targetUserId = Number(req.params.userId);
+  const amount = Number(req.body.amount);
+
+  if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+    return res.status(400).json({ message: 'Invalid user id' });
+  }
+
+  if (isNaN(amount) || amount < 0) {
+    return res.status(400).json({ message: 'amount must be a non-negative number' });
+  }
+
+  const { rows } = await pool.query(
+    `
+      UPDATE users
+      SET virtual_balance = $2
+      WHERE id = $1
+      RETURNING id, username, email, virtual_balance
+    `,
+    [targetUserId, amount]
+  );
+
+  if (!rows[0]) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  return res.json({ user: rows[0], message: 'Virtual balance updated' });
+}
+
+async function resetAllUsersVirtualBalance(req, res) {
+  const amount = Number(req.body.amount || 10000);
+
+  if (isNaN(amount) || amount < 0) {
+    return res.status(400).json({ message: 'amount must be a non-negative number' });
+  }
+
+  const { rows } = await pool.query(
+    `
+      UPDATE users
+      SET virtual_balance = $1
+      WHERE role = 'user'
+      RETURNING id, username, email, virtual_balance
+    `,
+    [amount]
+  );
+
+  return res.json({
+    message: `Reset virtual balance to $${amount.toFixed(2)} for ${rows.length} users`,
+    updatedCount: rows.length,
+    users: rows,
+  });
+}
+
 module.exports = {
   getOverview,
   updateUserRole,
   deleteUser,
+  updateUserVirtualBalance,
+  resetAllUsersVirtualBalance,
 };

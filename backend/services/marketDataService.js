@@ -177,23 +177,92 @@ async function fetchMarketSummary() {
   }
 }
 
+// Map categories based on news content
+function categorizeNews(tags = '', title = '') {
+  const content = `${tags} ${title}`.toLowerCase();
+  
+  if (content.includes('btc') || content.includes('eth') || content.includes('crypto') || content.includes('bitcoin') || content.includes('ethereum')) {
+    return 'Crypto';
+  }
+  if (content.includes('stock') || content.includes('sp500') || content.includes('nasdaq') || content.includes('dow')) {
+    return 'Stocks';
+  }
+  if (content.includes('forex') || content.includes('eurusd') || content.includes('gbpusd') || content.includes('yen')) {
+    return 'Forex';
+  }
+  if (content.includes('fed') || content.includes('inflation') || content.includes('rate') || content.includes('economy') || content.includes('gdp')) {
+    return 'Economy';
+  }
+  if (content.includes('ai') || content.includes('tech') || content.includes('nvidia') || content.includes('apple') || content.includes('microsoft')) {
+    return 'AI & Technology';
+  }
+  return 'Crypto'; // Default to Crypto
+}
+
+// Determine impact level based on keywords
+function determineImpact(title = '', summary = '') {
+  const content = `${title} ${summary}`.toLowerCase();
+  
+  const highImpactKeywords = ['surge', 'soars', 'plunges', 'crashes', 'breaks', 'major', 'critical', 'emergency', 'halted', 'significant'];
+  const mediumImpactKeywords = ['rises', 'falls', 'moves', 'shifts', 'signal', 'update', 'change', 'gains', 'loses'];
+  
+  if (highImpactKeywords.some(keyword => content.includes(keyword))) {
+    return 'high';
+  }
+  if (mediumImpactKeywords.some(keyword => content.includes(keyword))) {
+    return 'medium';
+  }
+  return 'low';
+}
+
+// Get image URL for news - using placeholder from Unsplash for now
+function getNewsImage(tags = '') {
+  const category = categorizeNews(tags);
+  const images = {
+    'Crypto': 'https://images.unsplash.com/photo-1639762681033-ec5c5fb92fac?auto=format&fit=crop&w=800&q=60',
+    'Stocks': 'https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=800&q=60',
+    'Forex': 'https://images.unsplash.com/photo-1611987620712-640974588df4?auto=format&fit=crop&w=800&q=60',
+    'Economy': 'https://images.unsplash.com/photo-1611974234167-9b19e02f3d7c?auto=format&fit=crop&w=800&q=60',
+    'AI & Technology': 'https://images.unsplash.com/photo-1620712014386-76ac9e5f57eb?auto=format&fit=crop&w=800&q=60',
+  };
+  return images[category];
+}
+
+// Parse tags to extract related assets
+function extractAssets(tags = '') {
+  const tagArray = tags.split(',').filter(t => t.trim());
+  return tagArray.slice(0, 5).map(t => t.trim().toUpperCase());
+}
+
 async function fetchCryptoNews(limit = 8) {
-  const safeLimit = Math.min(Math.max(Number(limit) || 8, 1), 40);
+  const safeLimit = Math.min(Math.max(Number(limit) || 8, 1), 50);
   try {
     const response = await axios.get('https://min-api.cryptocompare.com/data/v2/news/', {
       params: { lang: 'EN' },
+      timeout: 5000,
     });
 
-    const news = (response.data?.Data || []).slice(0, safeLimit).map((item) => ({
-      id: item.id,
-      title: item.title,
-      summary: item.body,
-      url: item.url,
-      source: item.source,
-      imageUrl: item.imageurl,
-      publishedAt: item.published_on ? new Date(item.published_on * 1000).toISOString() : null,
-      tags: item.tags || '',
-    }));
+    const news = (response.data?.Data || []).slice(0, safeLimit).map((item, index) => {
+      const tags = item.tags || '';
+      const category = categorizeNews(tags, item.title);
+      const impact = determineImpact(item.title, item.body);
+      const assets = extractAssets(tags);
+      
+      return {
+        id: item.id || `news-${index}`,
+        title: item.title,
+        description: item.body.substring(0, 150) + (item.body.length > 150 ? '...' : ''),
+        content: item.body,
+        source: item.source || 'Crypto News',
+        timestamp: item.published_on ? new Date(item.published_on * 1000) : new Date(),
+        category,
+        impact,
+        image: item.imageurl || getNewsImage(tags),
+        isFeatured: index === 0,
+        relatedAssets: assets,
+        url: item.url,
+      };
+    });
 
     return {
       source: 'cryptocompare',
@@ -201,39 +270,53 @@ async function fetchCryptoNews(limit = 8) {
       news,
     };
   } catch (error) {
+    console.error('Error fetching crypto news:', error.message);
+    // Fallback to mock data
     return {
       source: 'mock',
       timestamp: new Date().toISOString(),
       news: [
         {
           id: 'mock-1',
-          title: 'Bitcoin sees steady bids as traders position for volatility.',
-          summary: 'Market participants are balancing risk as derivatives open interest rises around major crypto pairs.',
-          url: 'https://www.binance.com/en/markets',
-          source: 'Market Desk',
-          imageUrl: null,
-          publishedAt: new Date().toISOString(),
-          tags: 'BTC,Volatility',
+          title: 'Bitcoin Surge: BTC Breaks $48,000 on Institutional Adoption',
+          description: 'Bitcoin rallies 8% as major financial institutions announce increased allocation to digital assets.',
+          content: 'Bitcoin has surged past the $48,000 mark following announcements from several Fortune 500 companies about increased cryptocurrency exposure. Major institutional players including pension funds and asset managers are allocating significant capital to digital assets.',
+          source: 'Bloomberg',
+          timestamp: new Date(Date.now() - 1000 * 60 * 45),
+          category: 'Crypto',
+          impact: 'high',
+          image: 'https://images.unsplash.com/photo-1639762681033-ec5c5fb92fac?auto=format&fit=crop&w=800&q=60',
+          isFeatured: true,
+          relatedAssets: ['BTC', 'ETH', 'CRYPTO'],
+          url: '#',
         },
         {
           id: 'mock-2',
-          title: 'Ethereum and Layer-1 tokens outperform in risk-on sessions.',
-          summary: 'ETH, SOL, and AVAX are leading relative strength while traders monitor macro data and ETF flow updates.',
-          url: 'https://www.binance.com/en/markets/overview',
-          source: 'Crypto Wire',
-          imageUrl: null,
-          publishedAt: new Date().toISOString(),
-          tags: 'ETH,SOL,AVAX',
+          title: 'Ethereum Foundation Launches Security Upgrade',
+          description: 'Ethereum network completes major security upgrade improving transaction validation and network efficiency.',
+          content: 'Ethereum successfully rolled out a critical security upgrade that enhances the blockchain\'s validation mechanisms. The upgrade improves transaction throughput by 30% and reduces network congestion during peak hours.',
+          source: 'Crypto News',
+          timestamp: new Date(Date.now() - 1000 * 60 * 120),
+          category: 'Crypto',
+          impact: 'high',
+          image: 'https://images.unsplash.com/photo-1621761191319-c6fb62b71c32?auto=format&fit=crop&w=800&q=60',
+          isFeatured: false,
+          relatedAssets: ['ETH', 'DEFI'],
+          url: '#',
         },
         {
           id: 'mock-3',
-          title: 'Altcoin breadth improves as market rotates into mid-cap assets.',
-          summary: 'Risk appetite is broadening while traders monitor BTC dominance for follow-through confirmation.',
-          url: 'https://www.binance.com/en/markets/trading_data',
-          source: 'Alpha Stream',
-          imageUrl: null,
-          publishedAt: new Date().toISOString(),
-          tags: 'ALT,BREADTH',
+          title: 'Federal Reserve Pauses Rate Hikes',
+          description: 'The Fed held rates steady at 5.25-5.50%, citing persistent inflation but acknowledging economic slowdown.',
+          content: 'In a significant policy decision, the Federal Reserve decided to hold interest rates steady, marking a pause in its rate-hiking cycle. The decision reflects growing concerns about the stability of the banking sector and recent economic data showing signs of weakness.',
+          source: 'Reuters',
+          timestamp: new Date(Date.now() - 1000 * 60 * 30),
+          category: 'Economy',
+          impact: 'high',
+          image: 'https://images.unsplash.com/photo-1611974234167-9b19e02f3d7c?auto=format&fit=crop&w=800&q=60',
+          isFeatured: false,
+          relatedAssets: ['SPY', 'DXY'],
+          url: '#',
         },
       ],
     };

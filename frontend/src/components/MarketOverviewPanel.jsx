@@ -26,11 +26,13 @@ function getMarketStatus(changePercent) {
 export default function MarketOverviewPanel({ selectedSymbol, onSelectSymbol }) {
   const [assets, setAssets] = useState([]);
   const [source, setSource] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadSummary() {
+      setLoading(true);
       try {
         const { data } = await api.get('/api/market/summary');
         if (!mounted) return;
@@ -38,6 +40,8 @@ export default function MarketOverviewPanel({ selectedSymbol, onSelectSymbol }) 
         setSource(data.source || '');
       } catch (error) {
         if (mounted) setAssets([]);
+      } finally {
+        if (mounted) setLoading(false);
       }
     }
 
@@ -56,7 +60,16 @@ export default function MarketOverviewPanel({ selectedSymbol, onSelectSymbol }) 
         <span className="muted">source: {source || '--'}</span>
       </div>
 
-      {!assets.length && <p className="muted">Loading market overview...</p>}
+      {loading && !assets.length && (
+        <div className="skeleton-grid">
+          <div className="skeleton-card" />
+          <div className="skeleton-card" />
+          <div className="skeleton-card" />
+          <div className="skeleton-card" />
+        </div>
+      )}
+
+      {!loading && !assets.length && <p className="muted">Loading market overview...</p>}
 
       <div className="overview-grid">
         {assets.slice(0, 8).map((asset) => {

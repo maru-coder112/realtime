@@ -10,6 +10,8 @@ router.use(authMiddleware, adminMiddleware);
 
 router.get('/overview', catchAsync(adminController.getOverview));
 router.patch('/users/:userId/role', catchAsync(adminController.updateUserRole));
+router.patch('/users/:userId/virtual-balance', catchAsync(adminController.updateUserVirtualBalance));
+router.post('/reset-virtual-balance', catchAsync(adminController.resetAllUsersVirtualBalance));
 router.delete('/users/:userId', catchAsync(adminController.deleteUser));
 
 module.exports = router;

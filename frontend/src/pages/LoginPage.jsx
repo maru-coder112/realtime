@@ -2,24 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
-import TradingBackground from '../components/TradingBackground';
-import MarketChart from '../components/MarketChart';
-import MarketOverviewPanel from '../components/MarketOverviewPanel';
-import DashboardNews from '../components/DashboardNews';
-import { MARKET_SYMBOLS } from '../constants/markets';
 import GoogleIcon from '../components/GoogleIcon';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 export default function LoginPage() {
   const [form, setForm] = useState({ identifier: '', password: '' });
-  const [selectedSymbol, setSelectedSymbol] = useState(MARKET_SYMBOLS[0].value);
   const [errorText, setErrorText] = useState('');
   const [infoText, setInfoText] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const handledGoogleLogin = useRef(false);
@@ -73,32 +65,25 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="layout dashboard-layout auth-dashboard-page">
-      <TradingBackground />
-
-      <header className="topbar nav-topbar card terminal-nav auth-nav">
-        <div>
-          <h1>Realtime Finance Intelligence and Backtesting Strategy</h1>
-          <p className="muted">Live market dashboard preview. Login to unlock strategy and backtesting workspace.</p>
+    <div className="auth-split-page">
+      <section className="auth-visual-side">
+        <div className="auth-visual-overlay" />
+        <div className="auth-visual-content">
+          <h1>Welcome Back</h1>
+          <p>Access your trading workspace, portfolio, and AI-powered insights in one place.</p>
+          <div className="auth-visual-metrics">
+            <span>Real-time Data</span>
+            <span>AI Predictions</span>
+            <span>Strategy Lab</span>
+            <span>Backtesting</span>
+          </div>
         </div>
-        <div className="row gap actions nav-actions auth-nav-actions">
-          <button type="button" className="nav-btn" onClick={toggleTheme}>
-            {isDark ? 'Light Mode' : 'Dark Mode'}
-          </button>
-          <Link className="nav-btn" to="/register">Register</Link>
-        </div>
-      </header>
+      </section>
 
-      <div className="dashboard-top full-width">
-        <MarketChart selectedSymbol={selectedSymbol} onSymbolChange={setSelectedSymbol} />
-      </div>
-
-      <div className="dashboard-grid full-width">
-        <MarketOverviewPanel selectedSymbol={selectedSymbol} onSelectSymbol={setSelectedSymbol} />
-
-        <form className="card auth-card auth-login-card" onSubmit={handleSubmit}>
-          <h2>Login</h2>
-          <p className="muted">Use your username or email to enter your dashboard.</p>
+      <section className="auth-form-side">
+        <form className="card auth-card auth-standalone-card" onSubmit={handleSubmit}>
+          <h2>Sign In</h2>
+          <p className="muted">Login with Google or email.</p>
 
           {errorText && <p className="auth-error">{errorText}</p>}
           {infoText && <p className="auth-info">{infoText}</p>}
@@ -117,28 +102,32 @@ export default function LoginPage() {
 
           <div className="auth-divider"><span>or login with email</span></div>
 
-          <label>Username or Email</label>
+          <label>Email or Username</label>
           <input
             type="text"
             value={form.identifier}
             onChange={(e) => setForm({ ...form, identifier: e.target.value })}
+            placeholder="you@example.com or trader_pro"
             required
+            disabled={loading}
           />
+
           <label>Password</label>
           <input
             type="password"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
+            placeholder="Enter your password"
             required
+            disabled={loading}
           />
-          <button type="submit" disabled={loading}>{loading ? 'Loading...' : 'Login'}</button>
+
+          <button type="submit" disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</button>
           <p>
-            No account? <Link to="/register">Register</Link>
+            Don't have an account? <Link to="/register">Register</Link>
           </p>
         </form>
-      </div>
-
-      <DashboardNews limit={6} title="Market Headlines" />
+      </section>
     </div>
   );
 }

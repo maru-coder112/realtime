@@ -3,6 +3,9 @@ const jwt = require('jsonwebtoken');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const userModel = require('../models/userModel');
+const strategyModel = require('../models/strategyModel');
+const backtestModel = require('../models/backtestModel');
+const { sendUserEmailNotification } = require('../services/notificationService');
 
 let googleStrategyConfigured = false;
 
@@ -54,6 +57,13 @@ function toSafeUser(user) {
     email: user.email,
     role: user.role,
     emailVerified: user.email_verified,
+    avatarUrl: user.avatar_url,
+    fullName: user.full_name,
+    phone: user.phone,
+    country: user.country,
+    bio: user.bio,
+    profileSettings: user.profile_settings || {},
+    virtualBalance: parseFloat(user.virtual_balance) || 10000,
   };
 }
 
@@ -187,12 +197,175 @@ async function login(req, res) {
 }
 
 async function me(req, res) {
+  try {
+    const user = await userModel.findById(req.user && req.user.id);
+    if (!user) {
+      console.error('authController.me: user not found for id', req.user && req.user.id);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.json({ user: toSafeUser(user) });
+  } catch (err) {
+    console.error('authController.me error', err && err.stack ? err.stack : err);
+    return res.status(500).json({ message: 'Unable to load user profile' });
+  }
+}
+
+async function profileSettings(req, res) {
   const user = await userModel.findById(req.user.id);
   if (!user) {
     return res.status(404).json({ message: 'User not found' });
   }
 
-  return res.json({ user: toSafeUser(user) });
+  // compute simple account statistics and recent backtests
+  const pool = require('../models/db');
+  try {
+    const strategies = await strategyModel.getStrategiesByUser(user.id);
+    const recentRes = await pool.query(
+      `SELECT br.id, br.strategy_id, br.metrics, br.start_date, br.end_date
+       FROM backtest_results br
+       WHERE br.user_id = $1
+       ORDER BY br.id DESC`,
+      [user.id]
+    );
+
+    const latestBacktestByStrategy = new Map();
+    (recentRes.rows || []).forEach((row) => {
+      if (!latestBacktestByStrategy.has(row.strategy_id)) {
+        latestBacktestByStrategy.set(row.strategy_id, row);
+      }
+    });
+
+    const backtestHistory = strategies.map((strategy) => {
+      const latest = latestBacktestByStrategy.get(strategy.id) || null;
+      return {
+        id: latest?.id || strategy.id,
+        strategy: strategy.name || `Strategy ${strategy.id}`,
+        result: latest?.metrics?.returnPct != null
+          ? `${Number(latest.metrics.returnPct).toFixed(2)}%`
+          : 'Not run yet',
+        period: latest?.start_date && latest?.end_date
+          ? `${new Date(latest.start_date).toLocaleDateString()} - ${new Date(latest.end_date).toLocaleDateString()}`
+          : 'No backtest yet',
+        info: latest
+          ? [
+              latest.metrics?.winRate != null ? `Win rate ${Number(latest.metrics.winRate).toFixed(1)}%` : null,
+              latest.metrics?.sharpeRatio != null ? `Sharpe ${Number(latest.metrics.sharpeRatio).toFixed(2)}` : null,
+              latest.metrics?.trades != null ? `${Number(latest.metrics.trades)} trades` : null,
+            ].filter(Boolean).join(' · ')
+          : 'Saved strategy waiting for a backtest run',
+      };
+    });
+
+    const backtestCount = recentRes.rows?.length || 0;
+
+    const accountStats = [
+      { label: 'Join date', value: new Date(user.created_at || user.createdAt || Date.now()).toLocaleDateString(), hint: 'Account onboarding' },
+      { label: 'Virtual balance', value: `$${(Number(user.virtual_balance) || 0).toFixed(2)}`, hint: 'Current simulated funds' },
+      { label: 'Backtests run', value: String(backtestCount), hint: 'Strategy research history' },
+    ];
+
+    return res.json({
+      user: toSafeUser(user),
+      settings: user.profile_settings || {},
+      accountStats,
+      savedStrategies: strategies.map((strategy) => ({
+        id: strategy.id,
+        name: strategy.name,
+        description: strategy.description || '',
+        parameters: strategy.parameters || {},
+      })),
+      backtestHistory,
+    });
+  } catch (err) {
+    return res.json({
+      user: toSafeUser(user),
+      settings: user.profile_settings || {},
+    });
+  }
+}
+
+async function updateProfileSettings(req, res) {
+  const currentUser = await userModel.findById(req.user.id);
+  if (!currentUser) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+
+  const profile = req.body.profile || {};
+  const security = req.body.security || {};
+  const trading = req.body.trading || {};
+  const notifications = req.body.notifications || {};
+  const appearance = req.body.appearance || {};
+
+  const nextUsername = String(profile.username || currentUser.username || '').trim();
+  const nextEmail = String(profile.email || currentUser.email || '').trim().toLowerCase();
+  const nextFullName = String(profile.fullName || '').trim();
+  const nextPhone = String(profile.phone || '').trim();
+  const nextCountry = String(profile.region || '').trim();
+  const nextBio = String(profile.bio || '').trim();
+  const nextAvatarUrl = String(req.body.avatarUrl || profile.avatarUrl || currentUser.avatar_url || '').trim() || null;
+
+  if (!nextUsername || !nextEmail) {
+    return res.status(400).json({ message: 'username and email are required' });
+  }
+
+  if (nextUsername.toLowerCase() !== String(currentUser.username || '').toLowerCase()) {
+    const existingUsername = await userModel.findByUsername(nextUsername);
+    if (existingUsername && existingUsername.id !== currentUser.id) {
+      return res.status(409).json({ message: 'Username already taken' });
+    }
+  }
+
+  if (nextEmail.toLowerCase() !== String(currentUser.email || '').toLowerCase()) {
+    const existingEmail = await userModel.findByEmail(nextEmail);
+    if (existingEmail && existingEmail.id !== currentUser.id) {
+      return res.status(409).json({ message: 'Email already registered' });
+    }
+  }
+
+  const profileSettings = {
+    profile: {
+      fullName: nextFullName,
+      email: nextEmail,
+      username: nextUsername,
+      phone: nextPhone,
+      region: nextCountry,
+      bio: nextBio,
+    },
+    security,
+    trading,
+    notifications,
+    appearance,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const updatedUser = await userModel.updateProfileSettings(req.user.id, {
+    username: nextUsername,
+    email: nextEmail,
+    avatarUrl: nextAvatarUrl,
+    fullName: nextFullName,
+    phone: nextPhone,
+    country: nextCountry,
+    bio: nextBio,
+    profileSettings,
+    emailVerified: nextEmail !== String(currentUser.email || '').toLowerCase() ? false : currentUser.email_verified,
+  });
+
+  await sendUserEmailNotification(updatedUser, {
+    subject: 'Profile settings updated',
+    title: 'Profile settings saved',
+    message: 'Your account settings and notification preferences were updated successfully.',
+    details: [
+      updatedUser?.email_verified === false ? 'Email address pending verification' : null,
+      `Notifications enabled: ${profileSettings.notifications?.email ? 'Yes' : 'No'}`,
+    ],
+  });
+
+  return res.json({
+    user: toSafeUser(updatedUser),
+    settings: profileSettings,
+    message: 'Profile settings saved successfully',
+  });
 }
 
 function googleStart(req, res, next) {
@@ -230,6 +403,8 @@ module.exports = {
   register,
   login,
   me,
+  profileSettings,
+  updateProfileSettings,
   googleStart,
   googleCallback,
 };

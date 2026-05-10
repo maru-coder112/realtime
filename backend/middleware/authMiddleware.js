@@ -7,6 +7,7 @@ function authMiddleware(req, res, next) {
     : null;
 
   if (!token) {
+    console.error('authMiddleware: missing Authorization token');
     return res.status(401).json({ message: 'Access token missing' });
   }
 
@@ -15,6 +16,7 @@ function authMiddleware(req, res, next) {
     req.user = decoded;
     return next();
   } catch (error) {
+    console.error('authMiddleware: token verification failed', error && error.message);
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 }

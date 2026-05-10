@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { MARKET_SYMBOLS } from '../constants/markets';
+import { useNotifications } from '../context/NotificationContext';
 
 export default function BacktestRunner({ strategyId, onRun, running = false }) {
+  const { notify } = useNotifications();
   const today = new Date();
   const past = new Date();
   past.setMonth(today.getMonth() - 3);
@@ -16,12 +18,22 @@ export default function BacktestRunner({ strategyId, onRun, running = false }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!strategyId) {
-      alert('Please create or load a strategy first.');
+      notify({
+        title: 'Strategy required',
+        message: 'Please create or load a strategy first.',
+        variant: 'warning',
+        kind: 'system',
+      });
       return;
     }
 
     if (payload.startDate > payload.endDate) {
-      alert('Start date must be before end date.');
+      notify({
+        title: 'Invalid date range',
+        message: 'Start date must be before end date.',
+        variant: 'warning',
+        kind: 'system',
+      });
       return;
     }
 

@@ -55,4 +55,5 @@ async function sendVerificationCodeEmail({ to, username, code }) {
 
 module.exports = {
   sendVerificationCodeEmail,
+  getSmtpConfig,
 };

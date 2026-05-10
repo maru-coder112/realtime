@@ -10,5 +10,7 @@ router.post('/login', catchAsync(authController.login));
 router.get('/google', authController.googleStart);
 router.get('/google/callback', authController.googleCallback);
 router.get('/me', authMiddleware, catchAsync(authController.me));
+router.get('/profile-settings', authMiddleware, catchAsync(authController.profileSettings));
+router.put('/profile-settings', authMiddleware, catchAsync(authController.updateProfileSettings));
 
 module.exports = router;

@@ -176,7 +176,7 @@ async function getAiPrediction(candles, symbol = 'BTCUSDT') {
 
   const parsed = JSON.parse(content);
   const safeConfidence = Number(parsed.confidence);
-  return {
+  const base = {
     prediction: parsed.prediction || fallback.prediction,
     summary: parsed.summary || fallback.summary,
     bias: parsed.bias || fallback.bias,
@@ -187,6 +187,11 @@ async function getAiPrediction(candles, symbol = 'BTCUSDT') {
     catalysts: Array.isArray(parsed.catalysts) ? parsed.catalysts : fallback.catalysts,
     risks: Array.isArray(parsed.risks) ? parsed.risks : fallback.risks,
     actionPlan: Array.isArray(parsed.actionPlan) ? parsed.actionPlan : fallback.actionPlan,
+  };
+
+  return {
+    ...base,
+    stats,
   };
 }
 

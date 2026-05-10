@@ -9,17 +9,21 @@ function clip(text, max = 140) {
 
 export default function DashboardNews({ limit = 8, title = 'Crypto News Feed', showMoreLink = false }) {
   const [news, setNews] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
 
     async function loadNews() {
+      setLoading(true);
       try {
         const { data } = await api.get('/api/market/news', { params: { limit } });
         if (!mounted) return;
         setNews(Array.isArray(data.news) ? data.news : []);
       } catch (error) {
         if (mounted) setNews([]);
+      } finally {
+        if (mounted) setLoading(false);
       }
     }
 
@@ -37,7 +41,14 @@ export default function DashboardNews({ limit = 8, title = 'Crypto News Feed', s
         <h3>{title}</h3>
         {showMoreLink && <Link className="btn-link" to="/news">Open News Page</Link>}
       </div>
-      {!news.length && <p className="muted">Loading news...</p>}
+      {loading && !news.length && (
+        <div className="skeleton-grid news-skeleton-grid">
+          {Array.from({ length: Math.min(limit || 3, 6) }).map((_, i) => (
+            <div key={i} className="skeleton-card" />
+          ))}
+        </div>
+      )}
+      {!loading && !news.length && <p className="muted">Loading news...</p>}
 
       <div className="news-list">
         {news.map((item) => (

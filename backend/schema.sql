@@ -3,6 +3,13 @@ CREATE TABLE IF NOT EXISTS users (
   username VARCHAR(100) NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  avatar_url TEXT,
+  full_name VARCHAR(150),
+  phone VARCHAR(50),
+  country VARCHAR(100),
+  bio TEXT,
+  profile_settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+  virtual_balance NUMERIC(15, 2) NOT NULL DEFAULT 10000.00,
   email_verified BOOLEAN NOT NULL DEFAULT FALSE,
   email_verification_code VARCHAR(12),
   email_verification_expires TIMESTAMP,
@@ -17,6 +24,24 @@ ALTER TABLE users
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS email_verification_expires TIMESTAMP;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS full_name VARCHAR(150);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS country VARCHAR(100);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS bio TEXT;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS virtual_balance NUMERIC(15, 2) NOT NULL DEFAULT 10000.00;
 
 CREATE TABLE IF NOT EXISTS historical_data (
   id SERIAL PRIMARY KEY,
