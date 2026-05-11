@@ -54,9 +54,14 @@ export default function App() {
         <Route
           path="/ai-prediction"
           element={
-            <PrivateRoute>
-              <AIPredictionPage />
-            </PrivateRoute>
+            // Dev helper: append `?dev=1` to bypass auth during local development for visual checks
+            (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dev') === '1')
+              ? <AIPredictionPage />
+              : (
+                <PrivateRoute>
+                  <AIPredictionPage />
+                </PrivateRoute>
+              )
           }
         />
         <Route

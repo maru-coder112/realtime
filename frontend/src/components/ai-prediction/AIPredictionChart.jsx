@@ -43,11 +43,39 @@ export default function AIPredictionChart({ chartPayload, prediction, indicatorS
   const [hoverPoint, setHoverPoint] = useState(null);
 
   const chartTheme = useMemo(() => ({
-    background: { type: ColorType.Solid, color: isDark ? '#0b1120' : '#ffffff' },
-    textColor: isDark ? '#c6d3e5' : '#1f2937',
-    gridColor: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.08)',
+    background: { type: ColorType.Solid, color: isDark ? '#0b1120' : '#fbfdff' },
+    textColor: isDark ? '#c6d3e5' : '#0f1724',
+    gridColor: isDark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.12)',
     borderColor: isDark ? 'rgba(148, 163, 184, 0.18)' : 'rgba(15, 23, 42, 0.12)',
   }), [isDark]);
+
+  const seriesColors = useMemo(() => {
+    if (isDark) {
+      return {
+        upColor: '#0ecb81',
+        downColor: '#f6465d',
+        ma20: '#f0b94d',
+        ma50: '#6ea8fe',
+        forecastLine: '#8ee6c7',
+        forecastTop: 'rgba(0, 200, 150, 0.28)',
+        forecastBottom: 'rgba(0, 200, 150, 0.02)',
+        volume: 'rgba(110, 168, 254, 0.32)',
+        crosshair: 'rgba(14, 203, 129, 0.35)',
+      };
+    }
+
+    return {
+      upColor: '#007a4d',
+      downColor: '#c92b31',
+      ma20: '#b77900',
+      ma50: '#1f6feb',
+      forecastLine: '#0b9a6b',
+      forecastTop: 'rgba(11, 154, 107, 0.18)',
+      forecastBottom: 'rgba(11, 154, 107, 0.04)',
+      volume: 'rgba(59, 130, 246, 0.22)',
+      crosshair: 'rgba(15, 23, 42, 0.12)',
+    };
+  }, [isDark]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -71,47 +99,47 @@ export default function AIPredictionChart({ chartPayload, prediction, indicatorS
         rightOffset: 12,
       },
       crosshair: {
-        vertLine: { color: 'rgba(14, 203, 129, 0.35)' },
-        horzLine: { color: 'rgba(14, 203, 129, 0.35)' },
+        vertLine: { color: seriesColors.crosshair },
+        horzLine: { color: seriesColors.crosshair },
       },
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
     });
 
     const candles = addSeriesCompat(chart, CandlestickSeries, {
-      upColor: '#0ecb81',
-      downColor: '#f6465d',
-      borderDownColor: '#f6465d',
-      borderUpColor: '#0ecb81',
-      wickDownColor: '#f6465d',
-      wickUpColor: '#0ecb81',
+      upColor: seriesColors.upColor,
+      downColor: seriesColors.downColor,
+      borderDownColor: seriesColors.downColor,
+      borderUpColor: seriesColors.upColor,
+      wickDownColor: seriesColors.downColor,
+      wickUpColor: seriesColors.upColor,
     });
     const ma20 = addSeriesCompat(chart, LineSeries, {
-      color: '#f0b94d',
+      color: seriesColors.ma20,
       lineWidth: 2,
       priceLineVisible: false,
     });
     const ma50 = addSeriesCompat(chart, LineSeries, {
-      color: '#6ea8fe',
+      color: seriesColors.ma50,
       lineWidth: 2,
       priceLineVisible: false,
     });
     const forecast = addSeriesCompat(chart, LineSeries, {
-      color: '#8ee6c7',
+      color: seriesColors.forecastLine,
       lineWidth: 2,
       lineStyle: 2,
       priceLineVisible: false,
     });
     const forecastArea = addSeriesCompat(chart, AreaSeries, {
-      lineColor: 'rgba(0, 200, 150, 0.96)',
-      topColor: 'rgba(0, 200, 150, 0.28)',
-      bottomColor: 'rgba(0, 200, 150, 0.02)',
+      lineColor: seriesColors.forecastLine,
+      topColor: seriesColors.forecastTop,
+      bottomColor: seriesColors.forecastBottom,
       priceLineVisible: false,
       lastValueVisible: false,
       crossHairMarkerVisible: false,
     });
     const volume = addSeriesCompat(chart, HistogramSeries, {
-      color: 'rgba(110, 168, 254, 0.28)',
+      color: seriesColors.volume,
       priceFormat: { type: 'volume' },
       priceLineVisible: false,
       scaleMargins: { top: 0.82, bottom: 0 },
@@ -183,7 +211,7 @@ export default function AIPredictionChart({ chartPayload, prediction, indicatorS
     volumeRef.current.setData(chartPayload.volume.map((item) => ({
       time: item.time,
       value: item.value,
-      color: 'rgba(110, 168, 254, 0.32)',
+      color: seriesColors.volume,
     })));
 
     chartRef.current.timeScale().fitContent();

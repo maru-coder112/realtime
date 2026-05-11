@@ -12,6 +12,11 @@ const MARKET_SEED = [
   { symbol: 'ETHUSD', name: 'Ethereum', price: 2741.26, openPrice: 2718, spread: 4.4, volume: 23560, volatility: 0.0028 },
   { symbol: 'SOLUSD', name: 'Solana', price: 162.41, openPrice: 159.2, spread: 0.92, volume: 19420, volatility: 0.0034 },
   { symbol: 'AAPL', name: 'Apple', price: 197.88, openPrice: 195.6, spread: 0.55, volume: 15120, volatility: 0.0018 },
+  { symbol: 'BNBUSD', name: 'BNB', price: 622.37, openPrice: 614.9, spread: 1.4, volume: 12940, volatility: 0.0029 },
+  { symbol: 'XRPUSD', name: 'XRP', price: 0.6248, openPrice: 0.6114, spread: 0.006, volume: 42810, volatility: 0.0036 },
+  { symbol: 'NVDA', name: 'NVIDIA', price: 914.12, openPrice: 903.5, spread: 1.1, volume: 11280, volatility: 0.0021 },
+  { symbol: 'TSLA', name: 'Tesla', price: 186.54, openPrice: 182.3, spread: 0.62, volume: 18760, volatility: 0.0027 },
+  { symbol: 'XAUUSD', name: 'Gold', price: 2326.8, openPrice: 2311.2, spread: 1.9, volume: 9680, volatility: 0.0017 },
 ];
 
 function uid() {
