@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import PremiumShell from '../components/PremiumShell';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -172,10 +172,11 @@ function StatCard({ label, value, hint }) {
 }
 
 export default function ProfilePage() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const { notify } = useNotifications();
   const { isDark, toggleTheme } = useTheme();
   const location = useLocation();
+  const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [hydrated, setHydrated] = useState(false);
   const [activeTab, setActiveTab] = useState(normalizeTab(location.state?.section));
@@ -411,6 +412,11 @@ export default function ProfilePage() {
       });
       setSaveState({ status: 'idle', message: 'Reset to defaults.' });
     }
+  };
+
+  const handleLogout = () => {
+    if (logout) logout();
+    navigate('/login');
   };
 
         
@@ -1038,42 +1044,50 @@ export default function ProfilePage() {
           </div>
         ) : (
           <>
-            
-
-            <div className="profile-layout profile-layout-stacked">
-              <div className="profile-tabs card profile-tabs-top">
-                {TAB_DEFS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    className={activeTab === tab.id ? 'profile-tab active' : 'profile-tab'}
-                    onClick={() => setActiveTab(tab.id)}
-                  >
-                    <span className="profile-tab-icon">
-                      <TabIcon name={tab.icon} />
-                    </span>
-                    <span className="profile-tab-copy">
-                      <strong>{tab.label}</strong>
-                      <span>{tab.hint}</span>
-                    </span>
-                  </button>
-                ))}
+            <div className="profile-account-bar card">
+              <div className="profile-account-bar-copy">
+                <p className="kicker">Account Center</p>
+                <h2>Manage your profile, security, and alerts</h2>
               </div>
-
-              <main className="profile-panel">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeTab}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.2, ease: 'easeOut' }}
-                  >
-                    {sectionContent}
-                  </motion.div>
-                </AnimatePresence>
-              </main>
+              <div className="profile-account-bar-actions">
+                <div className="profile-tabs profile-tabs-top">
+                  {TAB_DEFS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={activeTab === tab.id ? 'profile-tab active' : 'profile-tab'}
+                      onClick={() => setActiveTab(tab.id)}
+                    >
+                      <span className="profile-tab-icon">
+                        <TabIcon name={tab.icon} />
+                      </span>
+                      <span className="profile-tab-copy">
+                        <strong>{tab.label}</strong>
+                        <span>{tab.hint}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <button type="button" className="profile-inline-btn profile-signout-btn" onClick={handleLogout}>
+                  <ProfileGlyph name="logout" />
+                  Sign out
+                </button>
+              </div>
             </div>
+
+            <main className="profile-panel">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                >
+                  {sectionContent}
+                </motion.div>
+              </AnimatePresence>
+            </main>
           </>
         )}
       </div>

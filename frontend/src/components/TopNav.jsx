@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useState, useEffect, useRef } from 'react';
 
 function NavGlyph({ name }) {
   const paths = {
@@ -14,6 +15,7 @@ function NavGlyph({ name }) {
     chart: 'M5 19V5m0 14h14M8 15l3-4 3 2 4-6',
     help: 'M12 18h.01M9.5 9a2.5 2.5 0 1 1 4.1 2c-.9.7-1.6 1.2-1.6 2.5m-2.5-7.1A4 4 0 1 1 15 9c0 1.4-.8 2.1-1.8 2.8-.8.5-1.2 1-1.2 2.2',
     logout: 'M10 17 15 12 10 7M15 12H5m10-7h4v14h-4',
+    search: 'M21 21l-4.35-4.35M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14z',
   };
 
   return (
@@ -36,7 +38,7 @@ function getInitials(name) {
     .join('') || 'TR';
 }
 
-export default function TopNav({ title, subtitle, className = '', onMenuToggle, menuOpen = false }) {
+export default function TopNav({ title, subtitle, className = '' }) {
   const brandTitle = 'Realtime Finance Intelligence and Backtesting Strategy';
   const navigate = useNavigate();
   const { user, logout, refreshUser } = useAuth();
@@ -45,6 +47,32 @@ export default function TopNav({ title, subtitle, className = '', onMenuToggle, 
   const profileRole = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Trader';
   const profileInitials = getInitials(profileName);
   const profileAvatar = user?.avatarUrl || user?.photoUrl || user?.picture || '';
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef(null);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      try {
+        window.dispatchEvent(new CustomEvent('global-search', { detail: { query: searchQuery } }));
+      } catch (err) {
+        // ignore in non-browser environments
+      }
+    }, 220);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.isContentEditable !== true) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const openProfilePage = async () => {
     try {
@@ -81,62 +109,57 @@ export default function TopNav({ title, subtitle, className = '', onMenuToggle, 
 
   return (
     <header className={`topbar nav-topbar card ${className}`.trim()}>
-      <div className="nav-brand-block">
-        <div className="nav-brand-row">
-          {!!onMenuToggle && (
-            <button
-              type="button"
-              className={`icon-btn nav-menu-btn ${menuOpen ? 'active' : ''}`.trim()}
-              onClick={onMenuToggle}
-              aria-label="Toggle navigation sidebar"
-            >
-              <NavGlyph name="menu" />
-            </button>
-          )}
-          <div>
-            <h1 className="nav-brand-title">{brandTitle}</h1>
-            {!!title && <p className="nav-section-title">{title}</p>}
-            {!!subtitle && <p className="muted">{subtitle}</p>}
-          </div>
-        </div>
-      </div>
+      <div className="nav-brand-block" aria-hidden="true" />
 
       <div className="row gap actions nav-actions">
-        <button
-          type="button"
-          className="nav-btn nav-theme-btn"
-          onClick={toggleTheme}
-        >
-          {isDark ? 'Light Mode' : 'Dark Mode'}
-        </button>
-
-        {/* Logout moved to sidebar footer */}
-
-        <div className="user-menu">
+        <div className="topbar-search" role="search">
           <button
             type="button"
-            className="profile-chip profile-chip-action"
-            onClick={openProfilePage}
-            aria-label={`${profileName}, ${profileRole}`}
-            title="Open account settings"
+            className="icon-btn topbar-search-btn"
+            onClick={() => searchRef.current?.focus()}
+            aria-label="Focus search"
+            title="Focus search"
           >
-            <span className="profile-chip-avatar">
-              {profileAvatar ? (
-                <img src={profileAvatar} alt={profileName} />
-              ) : (
-                profileInitials
-              )}
-              <span className="profile-status-dot profile-status-dot-avatar" aria-hidden="true" />
-            </span>
-            <span className="profile-chip-copy">
-              <span className="profile-chip-label">Account</span>
-              <span className="profile-chip-meta">Settings</span>
-            </span>
-            <span className="profile-chip-chevron" aria-hidden="true">
-              <NavGlyph name="chevron" />
-            </span>
+            <NavGlyph name="search" />
           </button>
+          <input
+            ref={searchRef}
+            className="topbar-search-input"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                try { window.dispatchEvent(new CustomEvent('global-search-submit', { detail: { query: searchQuery } })); } catch (_) {}
+              }
+            }}
+            placeholder="Search site... (press / to focus)"
+            aria-label="Global search"
+          />
         </div>
+
+        <button
+          type="button"
+          className="icon-btn nav-theme-btn"
+          onClick={toggleTheme}
+          aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={isDark ? 'Light mode' : 'Dark mode'}
+        >
+          <NavGlyph name="palette" />
+        </button>
+
+        <button
+          type="button"
+          className="icon-btn profile-icon-btn"
+          onClick={openProfilePage}
+          aria-label={`${profileName}, ${profileRole}`}
+          title="Account settings"
+        >
+          {profileAvatar ? (
+            <img src={profileAvatar} alt={profileName} className="profile-icon-image" />
+          ) : (
+            <span className="profile-initials">{profileInitials}</span>
+          )}
+        </button>
       </div>
     </header>
   );

@@ -1,21 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PremiumShell from '../components/PremiumShell';
 import api from '../services/api';
+import { useMarketTicker } from '../hooks/useMarketTicker';
 
 const START_BALANCE = 10000;
 const TIMEFRAMES = ['1m', '5m', '15m', '1h', '1d'];
-const ORDER_TYPES = ['market', 'limit'];
-const QUICK_SIZES = [0.01, 0.02, 0.05, 0.1];
 
-const MARKET_SEED = [
-  { symbol: 'BTCUSD', name: 'Bitcoin', price: 48652.14, openPrice: 47880, spread: 14.8, volume: 18240, volatility: 0.0024 },
-  { symbol: 'ETHUSD', name: 'Ethereum', price: 2741.26, openPrice: 2718, spread: 4.4, volume: 23560, volatility: 0.0028 },
-  { symbol: 'SOLUSD', name: 'Solana', price: 162.41, openPrice: 159.2, spread: 0.92, volume: 19420, volatility: 0.0034 },
+const INITIAL_WATCHLIST = [
+  { symbol: 'BTCUSD', name: 'Bitcoin', price: 80712.95, openPrice: 79980, spread: 18.4, volume: 18240, volatility: 0.0026 },
+  { symbol: 'ETHUSD', name: 'Ethereum', price: 4218.34, openPrice: 4172, spread: 5.2, volume: 23560, volatility: 0.0029 },
+  { symbol: 'SOLUSD', name: 'Solana', price: 168.12, openPrice: 164.9, spread: 0.92, volume: 19420, volatility: 0.0034 },
   { symbol: 'AAPL', name: 'Apple', price: 197.88, openPrice: 195.6, spread: 0.55, volume: 15120, volatility: 0.0018 },
-  { symbol: 'BNBUSD', name: 'BNB', price: 622.37, openPrice: 614.9, spread: 1.4, volume: 12940, volatility: 0.0029 },
-  { symbol: 'XRPUSD', name: 'XRP', price: 0.6248, openPrice: 0.6114, spread: 0.006, volume: 42810, volatility: 0.0036 },
   { symbol: 'NVDA', name: 'NVIDIA', price: 914.12, openPrice: 903.5, spread: 1.1, volume: 11280, volatility: 0.0021 },
-  { symbol: 'TSLA', name: 'Tesla', price: 186.54, openPrice: 182.3, spread: 0.62, volume: 18760, volatility: 0.0027 },
   { symbol: 'XAUUSD', name: 'Gold', price: 2326.8, openPrice: 2311.2, spread: 1.9, volume: 9680, volatility: 0.0017 },
 ];
 
@@ -24,20 +20,18 @@ function uid() {
 }
 
 function formatMoney(value) {
-  const amount = Number(value || 0);
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: amount >= 100 ? 2 : 4,
-  }).format(amount);
+    maximumFractionDigits: Number(value || 0) >= 100 ? 2 : 4,
+  }).format(Number(value || 0));
 }
 
 function formatNumber(value, digits = 2) {
-  const amount = Number(value || 0);
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(amount);
+  }).format(Number(value || 0));
 }
 
 function formatPercent(value) {
@@ -48,13 +42,13 @@ function formatPercent(value) {
 function formatTradeTime(trade) {
   const value = trade.time || trade.created_at || trade.createdAt || trade.timestamp;
   const parsed = value ? new Date(value) : null;
-  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toLocaleTimeString() : '—';
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toLocaleString() : '—';
 }
 
-function initialSeries(basePrice) {
+function createHistorySeries(basePrice) {
   const now = Date.now();
   let lastClose = basePrice;
-  return Array.from({ length: 64 }).map((_, index) => {
+  return Array.from({ length: 72 }).map((_, index) => {
     const drift = Math.sin(index / 5) * 0.0012 + (Math.random() - 0.5) * 0.0034;
     const close = Math.max(0.01, lastClose * (1 + drift));
     const open = lastClose;
@@ -62,7 +56,7 @@ function initialSeries(basePrice) {
     const low = Math.min(open, close) * (1 - Math.random() * 0.0015);
     lastClose = close;
     return {
-      time: now - (64 - index) * 60000,
+      time: now - (72 - index) * 60000,
       open,
       high,
       low,
@@ -73,9 +67,7 @@ function initialSeries(basePrice) {
 }
 
 function buildChartGeometry(series) {
-  if (!series.length) {
-    return { line: '', area: '', min: 0, max: 1 };
-  }
+  if (!series.length) return { line: '', area: '', min: 0, max: 1 };
 
   const width = 840;
   const height = 280;
@@ -91,15 +83,17 @@ function buildChartGeometry(series) {
     return { x, y };
   });
 
-  const line = points.map((point) => `${point.x},${point.y}`).join(' ');
-  const area = [
-    `M ${padding} ${height - padding}`,
-    `L ${points.map((point) => `${point.x} ${point.y}`).join(' L ')}`,
-    `L ${width - padding} ${height - padding}`,
-    'Z',
-  ].join(' ');
-
-  return { line, area, min, max };
+  return {
+    line: points.map((point) => `${point.x},${point.y}`).join(' '),
+    area: [
+      `M ${padding} ${height - padding}`,
+      `L ${points.map((point) => `${point.x} ${point.y}`).join(' L ')}`,
+      `L ${width - padding} ${height - padding}`,
+      'Z',
+    ].join(' '),
+    min,
+    max,
+  };
 }
 
 function normalizeTradeRow(row) {
@@ -126,18 +120,17 @@ function normalizeTradeRow(row) {
   };
 }
 
-function createActivity(message, tone = 'neutral') {
-  return {
-    id: uid(),
-    message,
-    tone,
-    time: new Date().toLocaleTimeString(),
-  };
+function TickerPill({ active, children, tone = 'neutral', ...props }) {
+  return (
+    <button type="button" className={`live-pill ${active ? 'active' : ''} ${tone}`} {...props}>
+      {children}
+    </button>
+  );
 }
 
-function MetricCard({ label, value, hint, tone = 'neutral' }) {
+function StatCard({ label, value, hint, tone = 'neutral' }) {
   return (
-    <div className="metric-card card">
+    <div className="metric-card card live-stat-card">
       <p className="metric-label">{label}</p>
       <h3 className={`metric-value ${tone}`}>{value}</h3>
       {hint ? <p className="metric-hint">{hint}</p> : null}
@@ -145,50 +138,49 @@ function MetricCard({ label, value, hint, tone = 'neutral' }) {
   );
 }
 
-function PillButton({ active, tone = 'neutral', children, ...props }) {
-  return (
-    <button
-      className={`live-pill ${active ? 'active' : ''} ${tone}`}
-      type="button"
-      {...props}
-    >
-      {children}
-    </button>
-  );
+function resolveLivePrice(symbol, ticker) {
+  if (!ticker || typeof ticker !== 'object') return null;
+  const direct = ticker[symbol];
+  if (Number.isFinite(Number(direct))) return Number(direct);
+
+  const alias = {
+    BTCUSD: ticker.BTCUSDT,
+    ETHUSD: ticker.ETHUSDT,
+  };
+
+  const mapped = alias[symbol];
+  return Number.isFinite(Number(mapped)) ? Number(mapped) : null;
 }
 
 export default function LiveTradingPage() {
-  const [selectedSymbol, setSelectedSymbol] = useState(MARKET_SEED[0].symbol);
-  const [watchlist, setWatchlist] = useState(MARKET_SEED);
-  const [history, setHistory] = useState(() => initialSeries(MARKET_SEED[0].price));
+  const { ticker, connected: socketConnected } = useMarketTicker();
+  const [selectedSymbol, setSelectedSymbol] = useState(INITIAL_WATCHLIST[0].symbol);
+  const [watchlist, setWatchlist] = useState(INITIAL_WATCHLIST);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [history, setHistory] = useState(() => createHistorySeries(INITIAL_WATCHLIST[0].price));
   const [timeframe, setTimeframe] = useState('1m');
-  const [connection, setConnection] = useState('connected');
   const [balance, setBalance] = useState(START_BALANCE);
-  const [openTrades, setOpenTrades] = useState([]);
-  const [activity, setActivity] = useState([
-    createActivity('Paper account opened with $10,000 virtual capital.', 'good'),
-  ]);
-  const [customSymbol, setCustomSymbol] = useState('');
-  const [statusMessage, setStatusMessage] = useState('Ready to stage an order.');
-  const [loadingTrades, setLoadingTrades] = useState(true);
-  const [ticket, setTicket] = useState({
-    side: 'buy',
-    type: 'market',
-    qty: '0.02',
-    limitPrice: '',
-    stopLoss: '',
-    takeProfit: '',
-    riskPct: '1.5',
-  });
+  const [fills, setFills] = useState([]);
+  const [loadingFills, setLoadingFills] = useState(true);
+  const [statusMessage, setStatusMessage] = useState('Ready to stage a paper trade.');
+  const [newSymbol, setNewSymbol] = useState('');
+  const [ticket, setTicket] = useState({ side: 'buy', qty: '0.02', riskPct: '1.5', limitPrice: '', stopLoss: '', takeProfit: '' });
+
+  const filteredWatchlist = useMemo(() => {
+    const query = String(searchQuery || '').trim().toLowerCase();
+    if (!query) return watchlist;
+    return watchlist.filter((asset) => (
+      asset.symbol.toLowerCase().includes(query)
+      || String(asset.name || '').toLowerCase().includes(query)
+    ));
+  }, [watchlist, searchQuery]);
 
   const selectedAsset = useMemo(
-    () => watchlist.find((item) => item.symbol === selectedSymbol) || watchlist[0] || MARKET_SEED[0],
-    [watchlist, selectedSymbol],
+    () => filteredWatchlist.find((item) => item.symbol === selectedSymbol) || filteredWatchlist[0] || watchlist.find((item) => item.symbol === selectedSymbol) || watchlist[0] || INITIAL_WATCHLIST[0],
+    [filteredWatchlist, watchlist, selectedSymbol]
   );
 
-  const quoteMap = useMemo(() => Object.fromEntries(watchlist.map((item) => [item.symbol, item])), [watchlist]);
-
-  const historyGeometry = useMemo(() => buildChartGeometry(history), [history]);
+  const chartGeometry = useMemo(() => buildChartGeometry(history), [history]);
 
   const historyTrend = useMemo(() => {
     const first = history[0]?.close ?? 0;
@@ -196,68 +188,136 @@ export default function LiveTradingPage() {
     return first ? ((last - first) / first) * 100 : 0;
   }, [history]);
 
-  const openPnl = useMemo(() => {
-    return openTrades.reduce((sum, trade) => {
-      const quote = quoteMap[trade.asset]?.price ?? selectedAsset.price;
-      const qty = Number(trade.qty) || 0;
-      const entry = Number(trade.entryPrice) || quote;
-      const delta = trade.side === 'buy' ? (quote - entry) * qty : (entry - quote) * qty;
-      return sum + delta;
-    }, 0);
-  }, [openTrades, quoteMap, selectedAsset.price]);
+  const openFills = useMemo(() => fills.filter((trade) => trade.status === 'open'), [fills]);
+  const currentHoldings = useMemo(() => {
+    const holdingsByAsset = new Map();
 
-  const openCount = openTrades.filter((trade) => trade.status === 'open').length;
-  const closedCount = openTrades.filter((trade) => trade.status === 'closed').length;
-  const totalValue = balance + openPnl;
+    for (const trade of openFills) {
+      const symbol = String(trade.asset || '').toUpperCase();
+      const qty = Number(trade.qty) || 0;
+      if (!symbol || qty <= 0) continue;
+
+      const side = String(trade.side || 'buy').toLowerCase() === 'sell' ? -1 : 1;
+      const signedQty = qty * side;
+      const entryPrice = Number(trade.entryPrice) || 0;
+      const current = holdingsByAsset.get(symbol) || {
+        symbol,
+        netQty: 0,
+        signedCost: 0,
+        tradeCount: 0,
+      };
+
+      current.netQty += signedQty;
+      current.signedCost += signedQty * entryPrice;
+      current.tradeCount += 1;
+      holdingsByAsset.set(symbol, current);
+    }
+
+    return Array.from(holdingsByAsset.values())
+      .filter((holding) => Math.abs(holding.netQty) > 1e-9)
+      .map((holding) => {
+        const livePrice = watchlist.find((asset) => asset.symbol === holding.symbol)?.price;
+        const avgEntry = holding.netQty !== 0 ? Math.abs(holding.signedCost / holding.netQty) : 0;
+        const markPrice = Number.isFinite(Number(livePrice)) ? Number(livePrice) : avgEntry;
+        const marketValue = holding.netQty * markPrice;
+        const unrealizedPnl = (markPrice - avgEntry) * holding.netQty;
+
+        return {
+          ...holding,
+          avgEntry,
+          markPrice,
+          marketValue,
+          unrealizedPnl,
+          direction: holding.netQty > 0 ? 'Long' : 'Short',
+        };
+      })
+      .sort((a, b) => Math.abs(b.marketValue) - Math.abs(a.marketValue));
+  }, [openFills, watchlist]);
+
+  const filteredHoldings = useMemo(() => {
+    const query = String(searchQuery || '').trim().toLowerCase();
+    if (!query) return currentHoldings;
+    return currentHoldings.filter((holding) => holding.symbol.toLowerCase().includes(query));
+  }, [currentHoldings, searchQuery]);
+
+  const filteredFills = useMemo(() => {
+    const query = String(searchQuery || '').trim().toLowerCase();
+    if (!query) return fills;
+    return fills.filter((trade) => (
+      String(trade.asset || '').toLowerCase().includes(query)
+      || String(trade.side || '').toLowerCase().includes(query)
+      || String(trade.status || '').toLowerCase().includes(query)
+    ));
+  }, [fills, searchQuery]);
+
+  const holdingsMarketValue = useMemo(
+    () => currentHoldings.reduce((sum, holding) => sum + holding.marketValue, 0),
+    [currentHoldings]
+  );
+
+  const holdingsUnrealized = useMemo(
+    () => currentHoldings.reduce((sum, holding) => sum + holding.unrealizedPnl, 0),
+    [currentHoldings]
+  );
+
+  const openPnl = useMemo(() => openFills.reduce((sum, trade) => {
+    const quote = watchlist.find((item) => item.symbol === trade.asset)?.price ?? selectedAsset.price;
+    const qty = Number(trade.qty) || 0;
+    const entry = Number(trade.entryPrice) || quote;
+    const delta = trade.side === 'buy' ? (quote - entry) * qty : (entry - quote) * qty;
+    return sum + delta;
+  }, 0), [openFills, watchlist, selectedAsset.price]);
+
+  const selectedChange = useMemo(() => {
+    const base = selectedAsset.openPrice || selectedAsset.price || 1;
+    return ((selectedAsset.price - base) / base) * 100;
+  }, [selectedAsset]);
+
+  const selectedNotional = Number(ticket.qty || 0) * Number(selectedAsset.price || 0);
+  const projectedBalance = ticket.side === 'buy' ? Math.max(0, balance - selectedNotional) : balance + selectedNotional;
 
   useEffect(() => {
-    setHistory(initialSeries(selectedAsset.price));
+    setHistory(createHistorySeries(selectedAsset.price));
   }, [selectedSymbol]);
 
   useEffect(() => {
-    let mounted = true;
+    if (!ticker) return;
 
-    (async () => {
-      try {
-        const response = await api.get('/api/trades');
-        if (!mounted) return;
-        const rows = response?.data?.trades || [];
-        const normalized = rows.map(normalizeTradeRow);
-        setOpenTrades(normalized);
-        if (normalized.length) {
-          setActivity((current) => [
-            createActivity(`Loaded ${normalized.length} persisted trades from the desk archive.`, 'good'),
-            ...current,
-          ].slice(0, 10));
-        }
-      } catch (error) {
-        if (mounted) {
-          setStatusMessage('Using offline paper mode until the trade archive responds.');
-          setActivity((current) => [createActivity('Trade archive unavailable; running local simulation.', 'warning'), ...current].slice(0, 10));
-        }
-      } finally {
-        if (mounted) {
-          setLoadingTrades(false);
-        }
+    const liveBTC = resolveLivePrice('BTCUSD', ticker);
+    const liveETH = resolveLivePrice('ETHUSD', ticker);
+
+    setWatchlist((current) => current.map((asset) => {
+      const live = asset.symbol === 'BTCUSD' ? liveBTC : asset.symbol === 'ETHUSD' ? liveETH : null;
+      if (Number.isFinite(live)) {
+        return {
+          ...asset,
+          price: live,
+          source: 'live',
+        };
       }
-    })();
+      return asset;
+    }));
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    setStatusMessage(`Live feed active${ticker.timestamp ? ` • ${new Date(ticker.timestamp).toLocaleTimeString()}` : ''}`);
+  }, [ticker]);
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setWatchlist((current) => current.map((item, index) => {
-        const volatility = item.volatility || 0.0025;
+      setWatchlist((current) => current.map((asset, index) => {
+        const live = resolveLivePrice(asset.symbol, ticker);
+        if (Number.isFinite(live)) {
+          return { ...asset, price: live, source: 'live' };
+        }
+
+        const volatility = asset.volatility || 0.0025;
         const drift = (Math.random() - 0.5) * volatility + Math.sin((Date.now() / 1000 + index) / 9) * 0.00045;
-        const price = Math.max(0.01, item.price * (1 + drift));
+        const price = Math.max(0.01, asset.price * (1 + drift));
         return {
-          ...item,
+          ...asset,
           price,
-          volume: Math.round(item.volume * (1 + (Math.random() - 0.5) * 0.03)),
-          spread: Math.max(0.01, item.spread * (1 + (Math.random() - 0.5) * 0.01)),
+          volume: Math.round(asset.volume * (1 + (Math.random() - 0.5) * 0.03)),
+          spread: Math.max(0.01, asset.spread * (1 + (Math.random() - 0.5) * 0.01)),
+          source: 'sim',
         };
       }));
 
@@ -275,440 +335,344 @@ export default function LiveTradingPage() {
         };
         return [...current.slice(-95), next];
       });
-
-      if (Math.random() < 0.06) {
-        setConnection((current) => (current === 'connected' ? 'syncing' : 'connected'));
-      }
-    }, 1400);
+    }, 1500);
 
     return () => clearInterval(timer);
+  }, [ticker, selectedAsset.price]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadFills() {
+      try {
+        const response = await api.get('/api/trades');
+        if (!mounted) return;
+        const rows = response?.data?.trades || [];
+        setFills(rows.map(normalizeTradeRow));
+      } catch {
+        if (mounted) {
+          setFills([]);
+        }
+      } finally {
+        if (mounted) {
+          setLoadingFills(false);
+        }
+      }
+    }
+
+    loadFills();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const addActivity = (message, tone = 'neutral') => {
-    setActivity((current) => [createActivity(message, tone), ...current].slice(0, 10));
-  };
+  useEffect(() => {
+    const handleGlobalSearch = (event) => {
+      setSearchQuery(String(event?.detail?.query || ''));
+    };
 
-  const addSymbol = () => {
-    const symbol = String(customSymbol || '').trim().toUpperCase();
+    window.addEventListener('global-search', handleGlobalSearch);
+    return () => window.removeEventListener('global-search', handleGlobalSearch);
+  }, []);
+
+  useEffect(() => {
+    if (!filteredWatchlist.length) return;
+    if (!filteredWatchlist.some((asset) => asset.symbol === selectedSymbol)) {
+      setSelectedSymbol(filteredWatchlist[0].symbol);
+    }
+  }, [filteredWatchlist, selectedSymbol]);
+
+  const addWatchSymbol = () => {
+    const symbol = String(newSymbol || '').trim().toUpperCase();
     if (!symbol) return;
 
     setWatchlist((current) => {
-      if (current.some((item) => item.symbol === symbol)) {
-        return current;
-      }
-
-      const starter = symbol.includes('USD') ? 140 : symbol.length > 4 ? 220 : 92;
+      if (current.some((asset) => asset.symbol === symbol)) return current;
       const next = {
         symbol,
         name: symbol,
-        price: starter,
-        openPrice: starter,
-        spread: Math.max(0.08, starter * 0.003),
-        volume: 12400,
+        price: symbol.includes('USD') ? 180 : 100,
+        openPrice: symbol.includes('USD') ? 176 : 98,
+        spread: 0.5,
+        volume: 8000,
         volatility: 0.003,
       };
-      return [...current, next];
+      return [next, ...current];
     });
 
     setSelectedSymbol(symbol);
-    setCustomSymbol('');
-    addActivity(`Added ${symbol} to the watchlist.`, 'good');
+    setNewSymbol('');
   };
 
-  const removeSymbol = (symbol) => {
-    setWatchlist((current) => {
-      const next = current.filter((item) => item.symbol !== symbol);
-      if (!next.length) {
-        return current;
-      }
-      if (selectedSymbol === symbol) {
-        setSelectedSymbol(next[0].symbol);
-      }
-      return next;
-    });
-    addActivity(`Removed ${symbol} from the watchlist.`, 'warning');
-  };
-
-  const updateTicket = (field, value) => {
-    setTicket((current) => ({ ...current, [field]: value }));
-  };
-
-  const executionPrice = ticket.type === 'limit'
-    ? Number(ticket.limitPrice || selectedAsset.price)
-    : selectedAsset.price;
-  const quantity = Math.max(Number(ticket.qty || 0), 0);
-  const notional = executionPrice * quantity;
-  const projectedBalance = ticket.side === 'buy'
-    ? Math.max(0, balance - notional)
-    : balance + notional;
-  const fee = notional * 0.0004;
-
-  const placeOrder = async () => {
+  const stagePaperTrade = async () => {
     const qty = Number(ticket.qty);
-    if (!qty || qty <= 0) {
-      setStatusMessage('Enter a valid quantity before placing the order.');
+    const price = Number(selectedAsset.price || 0);
+    if (!qty || qty <= 0 || !price) {
+      setStatusMessage('Enter a quantity and select an asset.');
       return;
     }
 
-    if (ticket.type === 'limit' && !ticket.limitPrice) {
-      setStatusMessage('Limit orders need a limit price.');
+    if (ticket.side === 'buy' && qty * price > balance) {
+      setStatusMessage('Not enough virtual cash for this order.');
       return;
     }
 
-    const orderPrice = ticket.type === 'limit' ? Number(ticket.limitPrice) : selectedAsset.price;
-    if (!orderPrice || orderPrice <= 0) {
-      setStatusMessage('Order price must be greater than zero.');
-      return;
-    }
+    setStatusMessage('Staging paper trade...');
 
-    const orderNotional = orderPrice * qty;
-    if (ticket.side === 'buy' && orderNotional > balance) {
-      setStatusMessage('Not enough virtual cash for this buy order.');
-      return;
-    }
-
-    const payload = {
-      asset: selectedAsset.symbol,
-      side: ticket.side,
-      type: ticket.type,
-      price: orderPrice,
-      qty,
-      sl: ticket.stopLoss ? Number(ticket.stopLoss) : null,
-      tp: ticket.takeProfit ? Number(ticket.takeProfit) : null,
-      riskPct: ticket.riskPct ? Number(ticket.riskPct) : null,
-    };
-
-    setStatusMessage('Submitting order to the trade archive...');
     try {
-      const response = await api.post('/api/trades', payload);
-      const record = normalizeTradeRow(response?.data?.trade || { ...payload, created_at: new Date().toISOString() });
-      const createdAt = record.created_at || new Date().toISOString();
-
-      const nextTrade = {
-        ...record,
-        entryPrice: orderPrice,
-        status: 'open',
-        time: createdAt,
-        created_at: createdAt,
+      const payload = {
+        asset: selectedAsset.symbol,
+        side: ticket.side,
+        type: 'market',
+        price,
+        qty,
+        sl: ticket.stopLoss ? Number(ticket.stopLoss) : null,
+        tp: ticket.takeProfit ? Number(ticket.takeProfit) : null,
+        riskPct: ticket.riskPct ? Number(ticket.riskPct) : null,
       };
 
-      setOpenTrades((current) => [nextTrade, ...current]);
-      setBalance((current) => (ticket.side === 'buy' ? Math.max(0, current - orderNotional) : current + orderNotional));
-      setStatusMessage(`${ticket.side.toUpperCase()} ${formatNumber(qty, 3)} ${selectedAsset.symbol} staged successfully.`);
-      addActivity(`${ticket.side.toUpperCase()} ${formatNumber(qty, 3)} ${selectedAsset.symbol} @ ${formatMoney(orderPrice)}.`, ticket.side === 'buy' ? 'good' : 'warning');
-    } catch (error) {
-      setStatusMessage('Order failed. The backend may be offline or the token expired.');
-      addActivity('Order rejected by the archive service.', 'warning');
+      const response = await api.post('/api/trades', payload);
+      const trade = normalizeTradeRow(response?.data?.trade || { ...payload, created_at: new Date().toISOString() });
+
+      setFills((current) => [trade, ...current]);
+      setBalance((current) => (ticket.side === 'buy' ? current - qty * price : current + qty * price));
+      setStatusMessage(`${ticket.side.toUpperCase()} paper trade staged for ${selectedAsset.symbol}.`);
+    } catch {
+      setStatusMessage('Trade archive rejected the order. Check backend auth or connectivity.');
     }
   };
 
-  const closeTrade = (tradeId) => {
-    const trade = openTrades.find((item) => item.id === tradeId || item.tradeId === tradeId);
-    if (!trade) return;
-
-    const marketPrice = quoteMap[trade.asset]?.price ?? selectedAsset.price;
-    const qty = Number(trade.qty) || 0;
-    const entry = Number(trade.entryPrice) || marketPrice;
-    const pnl = trade.side === 'buy' ? (marketPrice - entry) * qty : (entry - marketPrice) * qty;
-    const cashDelta = trade.side === 'buy' ? marketPrice * qty : -marketPrice * qty;
-
-    setBalance((current) => Math.max(0, current + cashDelta));
-    setOpenTrades((current) => current.map((item) => {
-      if (item.id !== tradeId && item.tradeId !== tradeId) {
-        return item;
-      }
-
-      return {
-        ...item,
-        status: 'closed',
-        exitPrice: marketPrice,
-        pnl,
-        closedAt: new Date().toISOString(),
-      };
-    }));
-    setStatusMessage(`${trade.asset} closed at ${formatMoney(marketPrice)} for ${formatMoney(pnl)} P/L.`);
-    addActivity(`Closed ${trade.asset} trade and realized ${formatMoney(pnl)}.`, pnl >= 0 ? 'good' : 'warning');
-  };
-
-  const clearDesk = () => {
-    setBalance(START_BALANCE);
-    setOpenTrades((current) => current.map((trade) => ({ ...trade, status: 'closed', exitPrice: trade.entryPrice || selectedAsset.price, pnl: 0, closedAt: new Date().toISOString() })));
-    setActivity([createActivity('Desk reset to the default $10,000 paper balance.', 'good')]);
-    setStatusMessage('Desk reset.');
-  };
+  const fillRows = filteredFills.slice(0, 8);
 
   return (
-    <PremiumShell title="Live Trading" subtitle="Interactive paper desk with a $10,000 virtual account">
-      <div className="live-desk">
+    <PremiumShell title="Live Trading" subtitle="Simplified paper desk with realtime prices">
+      <div className="live-desk simplified-live-desk">
         <section className="live-hero card">
           <div className="live-hero-copy">
-            <p className="kicker">Virtual execution / institutional layout</p>
-            <h2>$10,000 paper desk</h2>
+            <p className="kicker">Paper trading / realtime market feed</p>
+            <h2>Watchlist, Market board, and Stage a paper trade</h2>
+            <p>
+              A simplified trading workspace with live BTCUSD pricing, a compact order ticket, and recent fills from the trade archive.
+            </p>
           </div>
 
-          <div className="live-hero-actions">
-            <MetricCard label="Virtual cash" value={formatMoney(balance)} hint="Starting capital: $10,000" tone={balance >= START_BALANCE ? 'good' : 'warning'} />
-            <MetricCard label="Open P/L" value={formatMoney(openPnl)} hint={`${openCount} open / ${closedCount} closed`} tone={openPnl >= 0 ? 'good' : 'warning'} />
-            <MetricCard label="Paper equity" value={formatMoney(totalValue)} hint={statusMessage} tone={totalValue >= START_BALANCE ? 'good' : 'warning'} />
+          <div className="live-hero-actions simplified-stats">
+            <StatCard label="Virtual cash" value={formatMoney(balance)} hint="Starting balance: $10,000" tone={balance >= START_BALANCE ? 'good' : 'warning'} />
+            <StatCard label="Open P/L" value={formatMoney(openPnl)} hint={`${openFills.length} open fills`} tone={openPnl >= 0 ? 'good' : 'warning'} />
+            <StatCard label="Paper equity" value={formatMoney(balance + openPnl)} hint={statusMessage} tone={balance + openPnl >= START_BALANCE ? 'good' : 'warning'} />
           </div>
         </section>
 
-        <section className="live-grid">
-          <aside className="live-sidebar">
-            <div className="card live-stack">
-              <div className="section-head">
-                <div>
-                  <p className="kicker">Watchlist</p>
-                  <h3>Market board</h3>
-                </div>
-                <span className={`status-pill ${connection === 'connected' ? 'good' : 'warning'}`}>{connection}</span>
-              </div>
+        <div className="live-simplified-grid">
+          <div className="live-main-column">
+            <details className="live-panel live-dropdown" open>
+              <summary className="live-dropdown-summary">
+                <span>
+                  <strong>Watchlist</strong>
+                  <small>Realtime prices and quick selection</small>
+                </span>
+                <span className={`status-pill ${socketConnected ? 'good' : 'warning'}`}>{socketConnected ? 'Live' : 'Offline'}{searchQuery ? ` • ${filteredWatchlist.length} match${filteredWatchlist.length === 1 ? '' : 'es'}` : ''}</span>
+              </summary>
 
-              <div className="live-input-row">
-                <input
-                  value={customSymbol}
-                  onChange={(event) => setCustomSymbol(event.target.value)}
-                  placeholder="Add symbol"
-                />
-                <button className="nav-btn" type="button" onClick={addSymbol}>Add</button>
-              </div>
-
-              <div className="live-watchlist">
-                {watchlist.map((asset) => {
-                  const changePct = ((asset.price - asset.openPrice) / asset.openPrice) * 100;
-                  const isActive = asset.symbol === selectedSymbol;
-                  return (
-                    <div
-                      key={asset.symbol}
-                      role="button"
-                      tabIndex={0}
-                      className={`watch-card ${isActive ? 'active' : ''}`}
-                      onClick={() => setSelectedSymbol(asset.symbol)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          setSelectedSymbol(asset.symbol);
-                        }
-                      }}
-                    >
-                      <div className="watch-card-top">
-                        <div>
-                          <strong>{asset.symbol}</strong>
-                          <span>{asset.name}</span>
-                        </div>
-                        <span className={`watch-change ${changePct >= 0 ? 'positive' : 'negative'}`}>
-                          {formatPercent(changePct)}
-                        </span>
-                      </div>
-                      <div className="watch-card-bottom">
-                        <span>{formatMoney(asset.price)}</span>
-                        <button
-                          className="watch-remove"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            removeSymbol(asset.symbol);
-                          }}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="market-summary">
-                <div className="market-summary-row">
-                  <span>Selected</span>
-                  <strong>{selectedAsset.symbol}</strong>
-                </div>
-                <div className="market-summary-row">
-                  <span>Spread</span>
-                  <strong>{formatMoney(selectedAsset.spread)}</strong>
-                </div>
-                <div className="market-summary-row">
-                  <span>Volume</span>
-                  <strong>{formatNumber(selectedAsset.volume, 0)}</strong>
-                </div>
-                <div className="market-summary-row">
-                  <span>Trend</span>
-                  <strong className={historyTrend >= 0 ? 'good' : 'bad'}>{formatPercent(historyTrend)}</strong>
-                </div>
-              </div>
-            </div>
-          </aside>
-
-          <main className="live-main">
-            <div className="card live-chart-card">
-              <div className="live-chart-head">
-                <div>
-                  <p className="kicker">Market tape</p>
-                  <h3>{selectedAsset.symbol} <span>{selectedAsset.name}</span></h3>
-                  <p className="live-price">{formatMoney(history[history.length - 1]?.close || selectedAsset.price)}</p>
-                </div>
-
-                <div className="live-chart-meta">
-                  <div className="live-chart-badge">{connection === 'connected' ? 'Connected' : 'Syncing'}</div>
-                  <div className={`live-trend ${historyTrend >= 0 ? 'positive' : 'negative'}`}>{formatPercent(historyTrend)}</div>
-                </div>
-              </div>
-
-              <div className="live-timeframes">
-                {TIMEFRAMES.map((frame) => (
-                  <PillButton
-                    key={frame}
-                    active={frame === timeframe}
-                    onClick={() => setTimeframe(frame)}
-                  >
-                    {frame}
-                  </PillButton>
-                ))}
-              </div>
-
-              <div className="live-chart-wrap">
-                <svg viewBox="0 0 840 280" preserveAspectRatio="none" className="live-chart-svg" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="liveChartStroke" x1="0" x2="1" y1="0" y2="0">
-                      <stop offset="0%" stopColor="#00c896" />
-                      <stop offset="100%" stopColor="#3b82f6" />
-                    </linearGradient>
-                    <linearGradient id="liveChartFill" x1="0" x2="0" y1="0" y2="1">
-                      <stop offset="0%" stopColor="rgba(0, 200, 150, 0.28)" />
-                      <stop offset="100%" stopColor="rgba(0, 200, 150, 0)" />
-                    </linearGradient>
-                  </defs>
-                  <path d={historyGeometry.area} fill="url(#liveChartFill)" />
-                  <polyline
-                    points={historyGeometry.line}
-                    fill="none"
-                    stroke="url(#liveChartStroke)"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+              <div className="live-panel-body">
+                <div className="live-input-row simplified-input-row">
+                  <input
+                    value={newSymbol}
+                    onChange={(event) => setNewSymbol(event.target.value)}
+                    placeholder="Add symbol"
                   />
-                </svg>
-                <div className="live-chart-grid" />
+                  <button className="nav-btn" type="button" onClick={addWatchSymbol}>Add</button>
+                </div>
+
+                <div className="watchlist-grid">
+                  {filteredWatchlist.map((asset) => {
+                    const changePct = ((asset.price - asset.openPrice) / asset.openPrice) * 100;
+                    const isActive = asset.symbol === selectedSymbol;
+                    const isLive = asset.symbol === 'BTCUSD' || asset.symbol === 'ETHUSD';
+
+                    return (
+                      <button
+                        key={asset.symbol}
+                        type="button"
+                        className={`watch-card ${isActive ? 'active' : ''}`}
+                        onClick={() => setSelectedSymbol(asset.symbol)}
+                      >
+                        <div className="watch-card-top">
+                          <div>
+                            <strong>{asset.symbol}</strong>
+                            <span>{asset.name}</span>
+                          </div>
+                          <span className={`watch-change ${changePct >= 0 ? 'positive' : 'negative'}`}>
+                            {formatPercent(changePct)}
+                          </span>
+                        </div>
+                        <div className="watch-card-bottom">
+                          <span>{formatMoney(asset.price)}</span>
+                          <small>{isLive ? 'realtime' : 'synced'}</small>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+            </details>
 
-              <div className="live-analytics">
-                <div className="analysis-tile">
-                  <span>Session range</span>
-                  <strong>{formatMoney(historyGeometry.min)} - {formatMoney(historyGeometry.max)}</strong>
+            <details className="live-panel live-dropdown" open>
+              <summary className="live-dropdown-summary">
+                <span>
+                  <strong>Market board</strong>
+                  <small>{selectedAsset.symbol} chart and quick stats</small>
+                </span>
+                <span className={`live-trend ${selectedChange >= 0 ? 'positive' : 'negative'}`}>{formatPercent(selectedChange)}</span>
+              </summary>
+
+              <div className="live-panel-body">
+                <div className="market-board-top">
+                  <div>
+                    <h3>{selectedAsset.symbol} <span>{selectedAsset.name}</span></h3>
+                    <p className="live-price">{formatMoney(selectedAsset.price)}</p>
+                  </div>
+
+                  <div className="market-board-meta">
+                    <div className="market-meta-pill">Spread {formatMoney(selectedAsset.spread)}</div>
+                    <div className="market-meta-pill">Volume {formatNumber(selectedAsset.volume, 0)}</div>
+                    <div className="market-meta-pill">Trend {formatPercent(historyTrend)}</div>
+                  </div>
                 </div>
-                <div className="analysis-tile">
-                  <span>Selected exposure</span>
-                  <strong>{formatMoney(selectedAsset.price * quantity)}</strong>
+
+                <div className="live-timeframes simplified-timeframes">
+                  {TIMEFRAMES.map((frame) => (
+                    <TickerPill key={frame} active={frame === timeframe} onClick={() => setTimeframe(frame)}>
+                      {frame}
+                    </TickerPill>
+                  ))}
                 </div>
-                <div className="analysis-tile">
-                  <span>Execution fee</span>
-                  <strong>{formatMoney(fee)}</strong>
+
+                <div className="live-chart-wrap">
+                  <svg viewBox="0 0 840 280" preserveAspectRatio="none" className="live-chart-svg" aria-hidden="true">
+                    <defs>
+                      <linearGradient id="liveChartStroke" x1="0" x2="1" y1="0" y2="0">
+                        <stop offset="0%" stopColor="#00c896" />
+                        <stop offset="100%" stopColor="#3b82f6" />
+                      </linearGradient>
+                      <linearGradient id="liveChartFill" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stopColor="rgba(0, 200, 150, 0.28)" />
+                        <stop offset="100%" stopColor="rgba(0, 200, 150, 0)" />
+                      </linearGradient>
+                    </defs>
+                    <path d={chartGeometry.area} fill="url(#liveChartFill)" />
+                    <polyline
+                      points={chartGeometry.line}
+                      fill="none"
+                      stroke="url(#liveChartStroke)"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <div className="live-chart-grid" />
                 </div>
-                <div className="analysis-tile">
-                  <span>Projected cash</span>
-                  <strong>{formatMoney(projectedBalance)}</strong>
+
+                <div className="market-summary simplified-market-summary">
+                  <div className="market-summary-row">
+                    <span>Session range</span>
+                    <strong>{formatMoney(chartGeometry.min)} - {formatMoney(chartGeometry.max)}</strong>
+                  </div>
+                  <div className="market-summary-row">
+                    <span>Selected change</span>
+                    <strong className={selectedChange >= 0 ? 'good' : 'bad'}>{formatPercent(selectedChange)}</strong>
+                  </div>
+                  <div className="market-summary-row">
+                    <span>Feed source</span>
+                    <strong>{socketConnected ? 'socket realtime' : 'local sim'}</strong>
+                  </div>
                 </div>
               </div>
-            </div>
+            </details>
 
-            <div className="card live-table-card">
-              <div className="section-head">
-                <div>
-                  <p className="kicker">Trade archive</p>
-                  <h3>Recent fills</h3>
-                </div>
-                <span className="muted">{loadingTrades ? 'Loading...' : `${openTrades.length} records`}</span>
-              </div>
+            <details className="live-panel live-dropdown" open>
+              <summary className="live-dropdown-summary">
+                <span>
+                  <strong>Recent fills</strong>
+                  <small>Fetched from the trade archive</small>
+                </span>
+                <span className="status-pill neutral">{loadingFills ? 'Loading' : `${fillRows.length} fills`}</span>
+              </summary>
 
-              <div className="table-wrap live-table-wrap">
-                <table className="live-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Asset</th>
-                      <th>Side</th>
-                      <th>Qty</th>
-                      <th>Entry</th>
-                      <th>P/L</th>
-                      <th>Time</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {openTrades.slice(0, 8).map((trade) => {
-                      const marketPrice = quoteMap[trade.asset]?.price ?? selectedAsset.price;
-                      const entry = Number(trade.entryPrice) || marketPrice;
-                      const qty = Number(trade.qty) || 0;
-                      const pnl = trade.status === 'closed'
-                        ? Number(trade.pnl) || 0
-                        : trade.side === 'buy'
-                          ? (marketPrice - entry) * qty
-                          : (entry - marketPrice) * qty;
-
-                      return (
+              <div className="live-panel-body">
+                <div className="table-wrap live-table-wrap">
+                  <table className="live-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Asset</th>
+                        <th>Side</th>
+                        <th>Qty</th>
+                        <th>Entry</th>
+                        <th>Status</th>
+                        <th>Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fillRows.map((trade) => (
                         <tr key={trade.id}>
-                          <td>{String(trade.id).slice(-6)}</td>
+                          <td>{String(trade.tradeId || trade.id).slice(-6)}</td>
                           <td>{trade.asset}</td>
                           <td className={trade.side === 'buy' ? 'good' : 'bad'}>{trade.side}</td>
-                          <td>{formatNumber(qty, 3)}</td>
-                          <td>{formatMoney(entry)}</td>
-                          <td className={pnl >= 0 ? 'good' : 'bad'}>{formatMoney(pnl)}</td>
+                          <td>{formatNumber(trade.qty, 3)}</td>
+                          <td>{formatMoney(trade.entryPrice)}</td>
+                          <td>{trade.status}</td>
                           <td>{formatTradeTime(trade)}</td>
-                          <td>
-                            {trade.status === 'open' ? (
-                              <button className="nav-btn" type="button" onClick={() => closeTrade(trade.id)}>Close</button>
-                            ) : (
-                              <span className="status-pill neutral">Closed</span>
-                            )}
-                          </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          </main>
+            </details>
+          </div>
 
           <aside className="live-ticket-column">
-            <div className="card live-ticket-card trade-panel">
-              <div className="section-head">
-                <div>
-                  <p className="kicker">Order ticket</p>
-                  <h3>Stage a paper trade</h3>
-                </div>
-                <span className={`status-pill ${connection === 'connected' ? 'good' : 'warning'}`}>{connection}</span>
-              </div>
+            <details className="live-panel live-dropdown" open>
+              <summary className="live-dropdown-summary">
+                <span>
+                  <strong>Order ticket</strong>
+                  <small>Stage a paper trade</small>
+                </span>
+                <span className="status-pill neutral">Paper only</span>
+              </summary>
 
-              <div className="trade-controls">
-                <div className="trade-type-tabs">
+              <div className="live-panel-body live-ticket-card compact-ticket">
+                <div className="trade-type-tabs simplified-tabs">
                   <button
                     type="button"
                     className={`trade-tab ${ticket.side === 'buy' ? 'active buy' : ''}`}
-                    onClick={() => updateTicket('side', 'buy')}
+                    onClick={() => setTicket((current) => ({ ...current, side: 'buy' }))}
                   >
                     Buy
                   </button>
                   <button
                     type="button"
                     className={`trade-tab ${ticket.side === 'sell' ? 'active sell' : ''}`}
-                    onClick={() => updateTicket('side', 'sell')}
+                    onClick={() => setTicket((current) => ({ ...current, side: 'sell' }))}
                   >
                     Sell
                   </button>
                 </div>
 
-                <div className="trade-type-tabs">
-                  {ORDER_TYPES.map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      className={`trade-tab ${ticket.type === type ? 'active' : ''}`}
-                      onClick={() => updateTicket('type', type)}
-                    >
-                      {type}
-                    </button>
-                  ))}
+                <div className="trade-summary compact-summary">
+                  <div className="summary-row">
+                    <span>Selected asset</span>
+                    <strong>{selectedAsset.symbol}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Current price</span>
+                    <strong>{formatMoney(selectedAsset.price)}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Projected cash</span>
+                    <strong>{formatMoney(projectedBalance)}</strong>
+                  </div>
                 </div>
 
                 <div className="form-field">
@@ -718,130 +682,114 @@ export default function LiveTradingPage() {
                     step="0.001"
                     min="0"
                     value={ticket.qty}
-                    onChange={(event) => updateTicket('qty', event.target.value)}
+                    onChange={(event) => setTicket((current) => ({ ...current, qty: event.target.value }))}
                   />
-                  <div className="quick-size-row">
-                    {QUICK_SIZES.map((size) => (
-                      <button key={size} type="button" className="live-pill" onClick={() => updateTicket('qty', String(size))}>
-                        {size}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
-                {ticket.type === 'limit' ? (
-                  <div className="form-field">
-                    <label>Limit price</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={ticket.limitPrice}
-                      placeholder={formatMoney(selectedAsset.price)}
-                      onChange={(event) => updateTicket('limitPrice', event.target.value)}
-                    />
-                  </div>
-                ) : (
-                  <div className="trade-summary">
-                    <div className="summary-row">
-                      <span>Execution price</span>
-                      <strong>{formatMoney(selectedAsset.price)}</strong>
+                <details className="paper-advanced">
+                  <summary>Advanced</summary>
+                  <div className="paper-advanced-grid">
+                    <div className="form-field">
+                      <label>Limit price</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={ticket.limitPrice}
+                        onChange={(event) => setTicket((current) => ({ ...current, limitPrice: event.target.value }))}
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label>Risk %</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        max="10"
+                        value={ticket.riskPct}
+                        onChange={(event) => setTicket((current) => ({ ...current, riskPct: event.target.value }))}
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label>Stop loss</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={ticket.stopLoss}
+                        onChange={(event) => setTicket((current) => ({ ...current, stopLoss: event.target.value }))}
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label>Take profit</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={ticket.takeProfit}
+                        onChange={(event) => setTicket((current) => ({ ...current, takeProfit: event.target.value }))}
+                      />
                     </div>
                   </div>
-                )}
+                </details>
 
-                <div className="live-grid-two">
-                  <div className="form-field">
-                    <label>Stop loss</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={ticket.stopLoss}
-                      onChange={(event) => updateTicket('stopLoss', event.target.value)}
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label>Take profit</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={ticket.takeProfit}
-                      onChange={(event) => updateTicket('takeProfit', event.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="form-field">
-                  <label>Risk %</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="10"
-                    value={ticket.riskPct}
-                    onChange={(event) => updateTicket('riskPct', event.target.value)}
-                  />
-                </div>
-
-                <div className="trade-summary">
-                  <div className="summary-row">
-                    <span>Notional</span>
-                    <strong>{formatMoney(notional)}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Projected cash</span>
-                    <strong>{formatMoney(projectedBalance)}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Risk budget</span>
-                    <strong>{formatMoney(balance * (Number(ticket.riskPct || 0) / 100))}</strong>
-                  </div>
-                </div>
-
-                <div className="live-actions">
-                  <button className={`trade-btn ${ticket.side}`} type="button" onClick={placeOrder}>
-                    Place {ticket.side === 'buy' ? 'Buy' : 'Sell'} Order
-                  </button>
-                  <button
-                    className="nav-btn"
-                    type="button"
-                    onClick={() => {
-                      setTicket({ side: 'buy', type: 'market', qty: '0.02', limitPrice: '', stopLoss: '', takeProfit: '', riskPct: '1.5' });
-                      setStatusMessage('Order ticket cleared.');
-                    }}
-                  >
-                    Reset
-                  </button>
-                </div>
+                <button className={`trade-btn ${ticket.side}`} type="button" onClick={stagePaperTrade}>
+                  Stage Paper Trade
+                </button>
 
                 <p className="live-status">{statusMessage}</p>
               </div>
-            </div>
+            </details>
 
-            <div className="card live-ticket-card live-activity-card">
-              <div className="section-head">
-                <div>
-                  <p className="kicker">Order flow</p>
-                  <h3>Activity stream</h3>
-                </div>
-                <button className="nav-btn" type="button" onClick={clearDesk}>Reset desk</button>
-              </div>
+            <details className="live-panel live-dropdown" open>
+              <summary className="live-dropdown-summary">
+                <span>
+                  <strong>Current holding</strong>
+                  <small>Open position exposure</small>
+                </span>
+                <span className="status-pill neutral">{filteredHoldings.length} assets</span>
+              </summary>
 
-              <div className="activity-list">
-                {activity.map((item) => (
-                  <div key={item.id} className={`activity-item ${item.tone}`}>
-                    <div>
-                      <strong>{item.message}</strong>
-                      <span>{item.time}</span>
+              <div className="live-panel-body">
+                {filteredHoldings.length ? (
+                  <>
+                    <div className="live-holdings-meta">
+                      <div className="live-holdings-meta-item">
+                        <span>Marked value</span>
+                        <strong>{formatMoney(holdingsMarketValue)}</strong>
+                      </div>
+                      <div className="live-holdings-meta-item">
+                        <span>Unrealized P/L</span>
+                        <strong className={holdingsUnrealized >= 0 ? 'good' : 'bad'}>{formatMoney(holdingsUnrealized)}</strong>
+                      </div>
                     </div>
-                  </div>
-                ))}
+
+                    <div className="live-holdings-list">
+                      {filteredHoldings.map((holding) => (
+                        <div key={holding.symbol} className="live-holding-row">
+                          <div className="live-holding-left">
+                            <strong>{holding.symbol}</strong>
+                            <span>{holding.direction} • Qty {formatNumber(Math.abs(holding.netQty), 4)}</span>
+                            <small>Avg {formatMoney(holding.avgEntry)}</small>
+                          </div>
+                          <div className="live-holding-right">
+                            <span>{formatMoney(holding.markPrice)}</span>
+                            <strong>{formatMoney(holding.marketValue)}</strong>
+                            <small className={holding.unrealizedPnl >= 0 ? 'good' : 'bad'}>{formatMoney(holding.unrealizedPnl)}</small>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="live-empty-note">
+                    {searchQuery ? 'No holdings match your search.' : 'No open holdings yet. Stage a paper trade to create a position.'}
+                  </p>
+                )}
               </div>
-            </div>
+            </details>
           </aside>
-        </section>
+        </div>
       </div>
     </PremiumShell>
   );

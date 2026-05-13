@@ -232,6 +232,22 @@ export default function useStrategyWorkspace() {
       const { data } = await api.get('/api/strategies');
       const list = Array.isArray(data) ? data : [];
       setStrategies(list);
+      return list;
+    } catch (loadError) {
+      setError(loadError.response?.data?.message || 'Failed to load strategies');
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function initializeStrategies() {
+      const list = await refreshStrategies();
+      if (!mounted) return;
+
       if (!selectedStrategyId && list.length) {
         setSelectedStrategyId(list[0].id);
         setDraft(normalizeDraft(list[0]));
@@ -239,21 +255,16 @@ export default function useStrategyWorkspace() {
       if (!compareStrategyId && list.length > 1) {
         setCompareStrategyId(list[1].id);
       }
-    } catch (loadError) {
-      setError(loadError.response?.data?.message || 'Failed to load strategies');
-    } finally {
-      setLoading(false);
     }
-  }, [compareStrategyId, selectedStrategyId]);
 
-  useEffect(() => {
-    refreshStrategies();
+    initializeStrategies();
     return () => {
+      mounted = false;
       if (progressTimerRef.current) {
         clearInterval(progressTimerRef.current);
       }
     };
-  }, [refreshStrategies]);
+  }, []);
 
   useEffect(() => {
     let mounted = true;

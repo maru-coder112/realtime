@@ -234,15 +234,106 @@ function extractAssets(tags = '') {
   return tagArray.slice(0, 5).map(t => t.trim().toUpperCase());
 }
 
+function stripHtml(input = '') {
+  return String(input)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractFirstImageFromHtml(html = '') {
+  const match = String(html).match(/<img[^>]+src=["']([^"']+)["']/i);
+  return match?.[1] || null;
+}
+
+function parseRssTag(block, tag) {
+  const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'i');
+  const cdataRegex = new RegExp(`<${tag}><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i');
+  const cdata = block.match(cdataRegex);
+  if (cdata?.[1]) return cdata[1].trim();
+  const plain = block.match(regex);
+  return plain?.[1]?.trim() || '';
+}
+
+function parseRssFeed(xml = '', source = 'RSS', maxItems = 20) {
+  const items = String(xml).match(/<item>[\s\S]*?<\/item>/gi) || [];
+
+  return items.slice(0, maxItems).map((item, index) => {
+    const title = stripHtml(parseRssTag(item, 'title')) || `${source} update`;
+    const link = stripHtml(parseRssTag(item, 'link')) || '#';
+    const descriptionRaw = parseRssTag(item, 'description') || parseRssTag(item, 'content:encoded') || '';
+    const descriptionText = stripHtml(descriptionRaw);
+    const pubDateRaw = stripHtml(parseRssTag(item, 'pubDate'));
+    const publishedDate = Number.isNaN(new Date(pubDateRaw).getTime()) ? new Date() : new Date(pubDateRaw);
+    const category = categorizeNews('', `${title} ${descriptionText}`);
+
+    return {
+      id: `rss-${source.toLowerCase().replace(/\s+/g, '-')}-${index}-${publishedDate.getTime()}`,
+      title,
+      description: descriptionText.slice(0, 180) + (descriptionText.length > 180 ? '...' : ''),
+      summary: descriptionText.slice(0, 180) + (descriptionText.length > 180 ? '...' : ''),
+      content: descriptionText || title,
+      source,
+      timestamp: publishedDate.toISOString(),
+      publishedAt: publishedDate.toISOString(),
+      category,
+      impact: determineImpact(title, descriptionText),
+      image: extractFirstImageFromHtml(descriptionRaw) || getNewsImage(category),
+      isFeatured: false,
+      relatedAssets: extractAssets(title),
+      url: link,
+    };
+  });
+}
+
+function buildFallbackNews(count = 12) {
+  const templates = [
+    { title: 'Bitcoin market update: momentum remains strong', source: 'Fallback Wire', category: 'Crypto' },
+    { title: 'Ethereum ecosystem growth accelerates across DeFi', source: 'Fallback Wire', category: 'Crypto' },
+    { title: 'Altcoin rotation pushes SOL and AVAX higher', source: 'Fallback Wire', category: 'Crypto' },
+    { title: 'Stablecoin regulation talks impact market sentiment', source: 'Fallback Wire', category: 'Economy' },
+    { title: 'Crypto miners adapt to shifting hash rate economics', source: 'Fallback Wire', category: 'Economy' },
+    { title: 'Institutional desks increase BTC and ETH exposure', source: 'Fallback Wire', category: 'Crypto' },
+    { title: 'AI token basket outperforms broader crypto market', source: 'Fallback Wire', category: 'AI & Technology' },
+    { title: 'Macro data release drives volatility in crypto pairs', source: 'Fallback Wire', category: 'Economy' },
+    { title: 'On-chain activity rises as network fees normalize', source: 'Fallback Wire', category: 'Crypto' },
+    { title: 'Derivatives open interest signals risk-on appetite', source: 'Fallback Wire', category: 'Crypto' },
+    { title: 'Layer-2 ecosystems attract new developer flows', source: 'Fallback Wire', category: 'AI & Technology' },
+    { title: 'Forex and crypto correlation weakens this session', source: 'Fallback Wire', category: 'Forex' },
+  ];
+
+  return Array.from({ length: count }).map((_, index) => {
+    const base = templates[index % templates.length];
+    const timestamp = new Date(Date.now() - index * 1000 * 60 * 25).toISOString();
+    return {
+      id: `fallback-${index + 1}`,
+      title: base.title,
+      description: `${base.title}. Traders are monitoring liquidity, macro signals, and exchange flows for confirmation.`,
+      summary: `${base.title}. Traders are monitoring liquidity, macro signals, and exchange flows for confirmation.`,
+      content: `${base.title}. This is a fallback article generated when external feeds are unavailable. It preserves full page behavior with realistic crypto market context.`,
+      source: base.source,
+      timestamp,
+      publishedAt: timestamp,
+      category: base.category,
+      impact: index < 4 ? 'high' : index < 8 ? 'medium' : 'low',
+      image: getNewsImage(base.category),
+      isFeatured: index === 0,
+      relatedAssets: ['BTC', 'ETH', 'SOL'],
+      url: '#',
+    };
+  });
+}
+
 async function fetchCryptoNews(limit = 8) {
-  const safeLimit = Math.min(Math.max(Number(limit) || 8, 1), 50);
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   try {
     const response = await axios.get('https://min-api.cryptocompare.com/data/v2/news/', {
       params: { lang: 'EN' },
       timeout: 5000,
     });
 
-    const news = (response.data?.Data || []).slice(0, safeLimit).map((item, index) => {
+    const cryptoCompareItems = Array.isArray(response.data?.Data) ? response.data.Data : [];
+    const cryptoCompareNews = cryptoCompareItems.slice(0, safeLimit).map((item, index) => {
       const tags = item.tags || '';
       const category = categorizeNews(tags, item.title);
       const impact = determineImpact(item.title, item.body);
@@ -252,73 +343,73 @@ async function fetchCryptoNews(limit = 8) {
         id: item.id || `news-${index}`,
         title: item.title,
         description: item.body.substring(0, 150) + (item.body.length > 150 ? '...' : ''),
+        summary: item.body.substring(0, 150) + (item.body.length > 150 ? '...' : ''),
         content: item.body,
         source: item.source || 'Crypto News',
-        timestamp: item.published_on ? new Date(item.published_on * 1000) : new Date(),
+        timestamp: item.published_on ? new Date(item.published_on * 1000).toISOString() : new Date().toISOString(),
+        publishedAt: item.published_on ? new Date(item.published_on * 1000).toISOString() : new Date().toISOString(),
         category,
         impact,
-        image: item.imageurl || getNewsImage(tags),
-        isFeatured: index === 0,
+        image: item.imageurl || getNewsImage(category),
+        isFeatured: false,
         relatedAssets: assets,
         url: item.url,
       };
     });
 
+    const rssSources = [
+      { url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', source: 'CoinDesk' },
+      { url: 'https://cointelegraph.com/rss', source: 'Cointelegraph' },
+      { url: 'https://decrypt.co/feed', source: 'Decrypt' },
+    ];
+
+    const rssResults = await Promise.allSettled(
+      rssSources.map((feed) =>
+        axios.get(feed.url, { timeout: 7000 }).then((res) => parseRssFeed(res.data, feed.source, Math.max(10, safeLimit)))
+      )
+    );
+
+    const rssNews = rssResults
+      .filter((result) => result.status === 'fulfilled')
+      .flatMap((result) => result.value);
+
+    const deduped = [];
+    const seen = new Set();
+    for (const item of [...cryptoCompareNews, ...rssNews]) {
+      const key = `${item.url || ''}|${item.title || ''}`.toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(item);
+    }
+
+    const news = deduped
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, safeLimit)
+      .map((item, index) => ({
+        ...item,
+        image: item.image || getNewsImage(item.category || 'Crypto'),
+        isFeatured: index === 0,
+      }));
+
+    if (!news.length) {
+      return {
+        source: 'fallback',
+        timestamp: new Date().toISOString(),
+        news: buildFallbackNews(Math.max(12, safeLimit)),
+      };
+    }
+
     return {
-      source: 'cryptocompare',
+      source: 'aggregated',
       timestamp: new Date().toISOString(),
       news,
     };
   } catch (error) {
     console.error('Error fetching crypto news:', error.message);
-    // Fallback to mock data
     return {
-      source: 'mock',
+      source: 'fallback',
       timestamp: new Date().toISOString(),
-      news: [
-        {
-          id: 'mock-1',
-          title: 'Bitcoin Surge: BTC Breaks $48,000 on Institutional Adoption',
-          description: 'Bitcoin rallies 8% as major financial institutions announce increased allocation to digital assets.',
-          content: 'Bitcoin has surged past the $48,000 mark following announcements from several Fortune 500 companies about increased cryptocurrency exposure. Major institutional players including pension funds and asset managers are allocating significant capital to digital assets.',
-          source: 'Bloomberg',
-          timestamp: new Date(Date.now() - 1000 * 60 * 45),
-          category: 'Crypto',
-          impact: 'high',
-          image: 'https://images.unsplash.com/photo-1639762681033-ec5c5fb92fac?auto=format&fit=crop&w=800&q=60',
-          isFeatured: true,
-          relatedAssets: ['BTC', 'ETH', 'CRYPTO'],
-          url: '#',
-        },
-        {
-          id: 'mock-2',
-          title: 'Ethereum Foundation Launches Security Upgrade',
-          description: 'Ethereum network completes major security upgrade improving transaction validation and network efficiency.',
-          content: 'Ethereum successfully rolled out a critical security upgrade that enhances the blockchain\'s validation mechanisms. The upgrade improves transaction throughput by 30% and reduces network congestion during peak hours.',
-          source: 'Crypto News',
-          timestamp: new Date(Date.now() - 1000 * 60 * 120),
-          category: 'Crypto',
-          impact: 'high',
-          image: 'https://images.unsplash.com/photo-1621761191319-c6fb62b71c32?auto=format&fit=crop&w=800&q=60',
-          isFeatured: false,
-          relatedAssets: ['ETH', 'DEFI'],
-          url: '#',
-        },
-        {
-          id: 'mock-3',
-          title: 'Federal Reserve Pauses Rate Hikes',
-          description: 'The Fed held rates steady at 5.25-5.50%, citing persistent inflation but acknowledging economic slowdown.',
-          content: 'In a significant policy decision, the Federal Reserve decided to hold interest rates steady, marking a pause in its rate-hiking cycle. The decision reflects growing concerns about the stability of the banking sector and recent economic data showing signs of weakness.',
-          source: 'Reuters',
-          timestamp: new Date(Date.now() - 1000 * 60 * 30),
-          category: 'Economy',
-          impact: 'high',
-          image: 'https://images.unsplash.com/photo-1611974234167-9b19e02f3d7c?auto=format&fit=crop&w=800&q=60',
-          isFeatured: false,
-          relatedAssets: ['SPY', 'DXY'],
-          url: '#',
-        },
-      ],
+      news: buildFallbackNews(Math.max(12, safeLimit)),
     };
   }
 }

@@ -39,7 +39,7 @@ async function getMarketSummary(req, res) {
 }
 
 async function getMarketNews(req, res) {
-  const limit = Number(req.query.limit || 8);
+  const limit = Number(req.query.limit || 20);
   const data = await fetchCryptoNews(limit);
   return res.json(data);
 }

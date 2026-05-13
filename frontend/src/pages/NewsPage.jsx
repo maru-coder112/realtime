@@ -119,8 +119,49 @@ const DATE_FILTERS = [
   { label: 'This Month', days: 30 },
 ];
 
+function toSafeDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function fallbackNewsImage(category = 'Crypto') {
+  const images = {
+    Crypto: 'https://images.unsplash.com/photo-1639762681033-ec5c5fb92fac?auto=format&fit=crop&w=800&q=60',
+    Stocks: 'https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=800&q=60',
+    Forex: 'https://images.unsplash.com/photo-1611987620712-640974588df4?auto=format&fit=crop&w=800&q=60',
+    Economy: 'https://images.unsplash.com/photo-1611974234167-9b19e02f3d7c?auto=format&fit=crop&w=800&q=60',
+    'AI & Technology': 'https://images.unsplash.com/photo-1620712014386-76ac9e5f57eb?auto=format&fit=crop&w=800&q=60',
+  };
+  return images[category] || images.Crypto;
+}
+
+function normalizeNewsItem(item, index) {
+  const timestamp = toSafeDate(item?.timestamp || item?.publishedAt || Date.now());
+  const description = item?.description || item?.summary || '';
+  const content = item?.content || description;
+  const source = item?.source || 'Market News';
+  const category = item?.category || 'Economy';
+  const impact = item?.impact || 'medium';
+  const relatedAssets = Array.isArray(item?.relatedAssets) ? item.relatedAssets : [];
+
+  return {
+    id: item?.id || `news-${index}`,
+    title: item?.title || 'Untitled market update',
+    description,
+    content,
+    source,
+    timestamp,
+    category,
+    impact,
+    image: item?.image || fallbackNewsImage(category),
+    isFeatured: Boolean(item?.isFeatured),
+    relatedAssets,
+    url: item?.url || '#',
+  };
+}
+
 export default function NewsPage() {
-  const [newsData, setNewsData] = useState(MOCK_NEWS);
+  const [newsData, setNewsData] = useState(MOCK_NEWS.map((item, index) => normalizeNewsItem(item, index)));
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedDateFilter, setSelectedDateFilter] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,28 +169,49 @@ export default function NewsPage() {
   const [sortBy, setSortBy] = useState('latest');
   const [showHighImpactOnly, setShowHighImpactOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Fetch news from API on component mount
-  useEffect(() => {
-    const fetchNews = async () => {
-      try {
+  const fetchNews = async ({ silent = false } = {}) => {
+    try {
+      if (silent) {
+        setRefreshing(true);
+      } else {
         setLoading(true);
-        const response = await api.get('/api/market/news?limit=20');
-        if (response?.news && Array.isArray(response.news)) {
-          setNewsData(response.data?.news || MOCK_NEWS);
-          setError(null);
-        }
-      } catch (err) {
-        console.error('Failed to fetch news:', err);
-        setError(err.message);
-        // Keep using mock data on error
-      } finally {
-        setLoading(false);
       }
-    };
-    
+
+      const { data } = await api.get('/api/market/news', { params: { limit: 30 } });
+      const incoming = Array.isArray(data?.news) ? data.news : [];
+      const normalized = incoming.map((item, index) => normalizeNewsItem(item, index));
+
+      if (normalized.length) {
+        setNewsData(normalized);
+        setError(null);
+        setLastUpdated(new Date());
+      } else {
+        setError('News feed returned no data.');
+      }
+    } catch (err) {
+      console.error('Failed to fetch news:', err);
+      setError('Could not load latest news. Showing fallback data.');
+      if (!newsData.length) {
+        setNewsData(MOCK_NEWS.map((item, index) => normalizeNewsItem(item, index)));
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
     fetchNews();
+
+    const timer = window.setInterval(() => {
+      fetchNews({ silent: true });
+    }, 60000);
+
+    return () => clearInterval(timer);
   }, []);
 
   // Filter and search logic
@@ -186,6 +248,8 @@ export default function NewsPage() {
     // Sort
     if (sortBy === 'latest') {
       result.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    } else if (sortBy === 'oldest') {
+      result.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
     }
 
     return result;
@@ -232,13 +296,19 @@ export default function NewsPage() {
           </div>
 
           <div className="news-header-buttons">
-            <button className="news-refresh-btn" title="Refresh news">
+            <button
+              className="news-refresh-btn"
+              title="Refresh news"
+              onClick={() => fetchNews({ silent: true })}
+              disabled={loading || refreshing}
+            >
               ⟳
             </button>
             <span className="news-live-indicator">
               <span className="news-live-dot" />
-              Live
+              {refreshing ? 'Refreshing...' : 'Live'}
             </span>
+            {lastUpdated ? <span className="news-last-updated">{lastUpdated.toLocaleTimeString()}</span> : null}
           </div>
         </div>
 

@@ -33,6 +33,20 @@ function MetricCard({ label, value, detail }) {
   );
 }
 
+const PREDICTION_SNAPSHOT_KEY = 'aiPredictionSnapshots';
+
+function readSnapshots() {
+  try {
+    return JSON.parse(localStorage.getItem(PREDICTION_SNAPSHOT_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function formatSnapshotValue(value) {
+  return Number(value || 0).toFixed(2);
+}
+
 export default function AIPredictionPage() {
   const { notify } = useNotifications();
   const {
@@ -55,6 +69,7 @@ export default function AIPredictionPage() {
   } = useAIPredictionDashboard();
   const [search, setSearch] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [comparison, setComparison] = useState(null);
 
   const filteredSymbols = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -107,18 +122,56 @@ export default function AIPredictionPage() {
     notify({ title: 'Report opened', message: 'Use the browser print dialog to save as PDF.', variant: 'success', kind: 'push' });
   };
 
-  const handleSaveToStrategy = () => {
+  const handleSaveAndCompare = () => {
+    const lastClose = chartPayload.candles.at(-1)?.close || 0;
+    const projectedPrice = Number(prediction?.projectedValue || lastClose || 0);
     const snapshot = {
       symbol,
       timeframe,
-      trend: prediction?.trend,
-      confidence: prediction?.confidence,
+      trend: prediction?.trend || 'Neutral',
+      confidence: Number(prediction?.confidence || 0),
+      actualPrice: Number(lastClose || 0),
+      predictedPrice: projectedPrice,
       savedAt: new Date().toISOString(),
     };
-    const saved = JSON.parse(localStorage.getItem('aiSavedStrategies') || '[]');
-    saved.unshift(snapshot);
-    localStorage.setItem('aiSavedStrategies', JSON.stringify(saved.slice(0, 12)));
-    notify({ title: 'Saved to strategy', message: 'Prediction snapshot saved locally.', variant: 'success', kind: 'push' });
+
+    const saved = readSnapshots();
+    const previous = saved[0];
+    const nextSnapshots = [snapshot, ...saved].slice(0, 12);
+
+    localStorage.setItem(PREDICTION_SNAPSHOT_KEY, JSON.stringify(nextSnapshots));
+
+    const comparisonEntry = previous
+      ? {
+          savedAt: snapshot.savedAt,
+          symbol,
+          timeframe,
+          previousTrend: previous.trend,
+          currentTrend: snapshot.trend,
+          confidenceDelta: snapshot.confidence - Number(previous.confidence || 0),
+          actualDelta: snapshot.actualPrice - Number(previous.actualPrice || 0),
+          predictedDelta: snapshot.predictedPrice - Number(previous.predictedPrice || 0),
+        }
+      : {
+          savedAt: snapshot.savedAt,
+          symbol,
+          timeframe,
+          previousTrend: null,
+          currentTrend: snapshot.trend,
+          confidenceDelta: 0,
+          actualDelta: 0,
+          predictedDelta: 0,
+        };
+
+    setComparison(comparisonEntry);
+    notify({
+      title: previous ? 'Saved and compared' : 'Snapshot saved',
+      message: previous
+        ? `Compared ${symbol} against the previous saved snapshot.`
+        : `Saved the first ${symbol} prediction snapshot.`,
+      variant: 'success',
+      kind: 'push',
+    });
   };
 
   const handleAddToWatchlist = () => {
@@ -230,39 +283,6 @@ export default function AIPredictionPage() {
           </div>
         </motion.section>
 
-        <motion.section
-          className="card ai-indicators-card"
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.32, delay: 0.03 }}
-        >
-          <div className="ai-section-heading">
-            <div>
-              <p className="kicker">Technical Indicators</p>
-              <h3>Optional overlays on chart</h3>
-            </div>
-            <p className="muted">Toggle indicator layers without leaving the chart view.</p>
-          </div>
-          <div className="ai-toggle-row">
-            {[
-              ['movingAverage', 'Moving Average'],
-              ['rsi', 'RSI'],
-              ['macd', 'MACD'],
-              ['volume', 'Volume'],
-              ['atr', 'ATR'],
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                className={`ai-toggle-pill ${indicatorState[key] ? 'active' : ''}`}
-                onClick={() => toggleIndicator(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </motion.section>
-
         <div className="ai-main-grid">
           <AIPredictionChart
             chartPayload={chartPayload}
@@ -271,63 +291,173 @@ export default function AIPredictionPage() {
             loading={loading && !chartPayload.candles.length}
           />
 
-          <motion.aside
-            className="card ai-summary-card"
-            initial={{ opacity: 0, x: 18 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3, delay: 0.05 }}
-          >
-            <div className="ai-summary-top">
-              <div>
-                <p className="kicker">Prediction Summary</p>
-                <h3>{selectedAsset?.label || symbol}</h3>
+          <div className="ai-right-rail">
+            <motion.section
+              className="card ai-indicators-card ai-indicators-rail"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.32, delay: 0.03 }}
+            >
+              <div className="ai-section-heading">
+                <div>
+                  <p className="kicker">Technical Indicators</p>
+                  <h3>Chart overlays</h3>
+                </div>
               </div>
-              <span className={`trend-badge ${trendTone}`}>{prediction?.trend || 'Neutral'}</span>
-            </div>
-
-            {loading && !prediction ? (
-              <div className="ai-summary-skeleton">
-                <div className="skeleton-card" />
-                <div className="skeleton-card" />
-                <div className="skeleton-card" />
+              <div className="ai-toggle-row ai-toggle-row-compact">
+                {[
+                  ['movingAverage', 'MA'],
+                  ['rsi', 'RSI'],
+                  ['macd', 'MACD'],
+                  ['volume', 'Vol'],
+                  ['atr', 'ATR'],
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`ai-toggle-pill ${indicatorState[key] ? 'active' : ''}`}
+                    onClick={() => toggleIndicator(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <>
-                <div className="ai-confidence-meter">
-                  <div className="ai-confidence-header">
-                    <span>Confidence Score</span>
-                    <strong>{confidencePct}%</strong>
+            </motion.section>
+
+            <motion.aside
+              className="card ai-summary-card"
+              initial={{ opacity: 0, x: 18 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 0.05 }}
+            >
+              <div className="ai-summary-top">
+                <div>
+                  <p className="kicker">Prediction Summary</p>
+                  <h3>{selectedAsset?.label || symbol}</h3>
+                </div>
+                <span className={`trend-badge ${trendTone}`}>{prediction?.trend || 'Neutral'}</span>
+              </div>
+
+              {loading && !prediction ? (
+                <div className="ai-summary-skeleton">
+                  <div className="skeleton-card" />
+                  <div className="skeleton-card" />
+                  <div className="skeleton-card" />
+                </div>
+              ) : (
+                <>
+                  <div className="ai-confidence-meter">
+                    <div className="ai-confidence-header">
+                      <span>Confidence Score</span>
+                      <strong>{confidencePct}%</strong>
+                    </div>
+                    <div className="ai-confidence-track">
+                      <motion.div
+                        className="ai-confidence-fill"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${confidencePct}%` }}
+                        transition={{ duration: 0.55, ease: 'easeOut' }}
+                      />
                   </div>
-                  <div className="ai-confidence-track">
-                    <motion.div
-                      className="ai-confidence-fill"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${confidencePct}%` }}
-                      transition={{ duration: 0.55, ease: 'easeOut' }}
-                    />
                   </div>
-                </div>
 
-                <div className="ai-summary-copy">
-                  <p className="muted">Expected Price Direction</p>
-                  <h4>{prediction?.expectedDirection || 'Sideways'}</h4>
-                  <p className="ai-summary-text">{prediction?.explanation || 'Awaiting AI forecast response.'}</p>
-                </div>
+                  <div className="ai-summary-copy">
+                    <p className="muted">Expected Price Direction</p>
+                    <h4>{prediction?.expectedDirection || 'Sideways'}</h4>
+                    <p className="ai-summary-text">{prediction?.explanation || 'Awaiting AI forecast response.'}</p>
+                  </div>
 
-                <div className="ai-summary-list">
-                  {infoRow('Predicted Trend', prediction?.trend || 'Neutral')}
-                  {infoRow('Risk Level', prediction?.riskLevel || 'Medium')}
-                  {infoRow('Last Updated', formatDateTime(lastUpdated))}
-                  {infoRow('Projected Move', `${projectedGap >= 0 ? '+' : ''}${projectedGap.toFixed(2)} (${projectedGapPct >= 0 ? '+' : ''}${projectedGapPct.toFixed(2)}%)`)}
-                </div>
+                  <div className="ai-summary-list">
+                    {infoRow('Predicted Trend', prediction?.trend || 'Neutral')}
+                    {infoRow('Risk Level', prediction?.riskLevel || 'Medium')}
+                    {infoRow('Last Updated', formatDateTime(lastUpdated))}
+                    {infoRow('Projected Move', `${projectedGap >= 0 ? '+' : ''}${projectedGap.toFixed(2)} (${projectedGapPct >= 0 ? '+' : ''}${projectedGapPct.toFixed(2)}%)`)}
+                  </div>
 
-                {error && <p className="ai-inline-error">{error}</p>}
-              </>
-            )}
-          </motion.aside>
+                  {error && <p className="ai-inline-error">{error}</p>}
+                </>
+              )}
+            </motion.aside>
+
+          </div>
         </div>
 
         <div className="ai-bottom-grid">
+          <div className="ai-actions-compare-group">
+            <motion.section className="card ai-actions-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.34 }}>
+              <div className="ai-section-heading">
+                <div>
+                  <p className="kicker">Actions</p>
+                  <h3>Save and compare</h3>
+                </div>
+              </div>
+              <div className="ai-actions-row ai-actions-row-compact">
+                <motion.button className="ai-action-btn primary" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleSaveAndCompare}>
+                  Save & Compare
+                </motion.button>
+                <motion.button className="ai-action-btn" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleCompareActualData}>
+                  Refresh Actual Data
+                </motion.button>
+              </div>
+            </motion.section>
+
+            {comparison && (
+              <motion.section 
+                className="card ai-compare-section" 
+                initial={{ opacity: 0, y: 12 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ duration: 0.28 }}
+              >
+                <div className="ai-compare-panel" >
+                  <div className="ai-compare-header">
+                    <h4>Prediction vs Actual</h4>
+                    <p className="ai-compare-meta">{comparison.symbol} · {comparison.timeframe}</p>
+                  </div>
+                  <div className="ai-compare-table">
+                    <div className="ai-compare-row ai-compare-header-row">
+                      <div className="ai-compare-col ai-compare-metric">Metric</div>
+                      <div className="ai-compare-col">Performance</div>
+                      <div className="ai-compare-col ai-compare-value">Value</div>
+                    </div>
+                    <div className="ai-compare-row">
+                      <div className="ai-compare-col ai-compare-metric">Confidence</div>
+                      <div className="ai-compare-col">
+                        <span className={`ai-compare-badge ${comparison.confidenceDelta >= 0 ? 'positive' : 'negative'}`}>
+                          {comparison.confidenceDelta >= 0 ? '📈' : '📉'}
+                        </span>
+                      </div>
+                      <div className={`ai-compare-col ai-compare-value ${comparison.confidenceDelta >= 0 ? 'good' : 'bad'}`}>
+                        {comparison.confidenceDelta >= 0 ? '+' : ''}{comparison.confidenceDelta.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div className="ai-compare-row">
+                      <div className="ai-compare-col ai-compare-metric">Actual Price</div>
+                      <div className="ai-compare-col">
+                        <span className={`ai-compare-badge ${comparison.actualDelta >= 0 ? 'positive' : 'negative'}`}>
+                          {comparison.actualDelta >= 0 ? '✓' : '✗'}
+                        </span>
+                      </div>
+                      <div className={`ai-compare-col ai-compare-value ${comparison.actualDelta >= 0 ? 'good' : 'bad'}`}>
+                        {comparison.actualDelta >= 0 ? '+' : ''}{formatSnapshotValue(comparison.actualDelta)}
+                      </div>
+                    </div>
+                    <div className="ai-compare-row">
+                      <div className="ai-compare-col ai-compare-metric">Predicted Price</div>
+                      <div className="ai-compare-col">
+                        <span className={`ai-compare-badge ${comparison.predictedDelta >= 0 ? 'positive' : 'negative'}`}>
+                          {comparison.predictedDelta >= 0 ? '✓' : '✗'}
+                        </span>
+                      </div>
+                      <div className={`ai-compare-col ai-compare-value ${comparison.predictedDelta >= 0 ? 'good' : 'bad'}`}>
+                        {comparison.predictedDelta >= 0 ? '+' : ''}{formatSnapshotValue(comparison.predictedDelta)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.section>
+            )}
+          </div>
+
           <motion.section className="card ai-model-card" whileHover={{ y: -3 }} transition={{ duration: 0.18 }}>
             <div className="ai-section-heading">
               <div>
@@ -368,33 +498,6 @@ export default function AIPredictionPage() {
           </motion.section>
         </div>
 
-        <motion.section className="card ai-risk-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-          <div className="ai-section-heading">
-            <div>
-              <p className="kicker">Risk Warning</p>
-              <h3>Educational use only</h3>
-            </div>
-          </div>
-          <div className="ai-risk-text">
-            <p>This dashboard is for educational trading insights only and does not constitute financial advice.</p>
-            <p>Predictions are probabilistic and can change as new market data arrives. Always validate the signal against your own research.</p>
-          </div>
-        </motion.section>
-
-        <motion.section className="card ai-actions-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.34 }}>
-          <div className="ai-section-heading">
-            <div>
-              <p className="kicker">Actions</p>
-              <h3>Save and compare</h3>
-            </div>
-          </div>
-          <div className="ai-actions-row">
-            <motion.button className="ai-action-btn primary" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleSaveToStrategy}>Save to Strategy</motion.button>
-            <motion.button className="ai-action-btn" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleAddToWatchlist}>Add to Watchlist</motion.button>
-            <motion.button className="ai-action-btn" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleExportReport}>Export Report (PDF)</motion.button>
-            <motion.button className="ai-action-btn" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} onClick={handleCompareActualData}>Compare with Actual Data</motion.button>
-          </div>
-        </motion.section>
       </div>
     </PremiumShell>
   );

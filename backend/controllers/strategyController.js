@@ -20,15 +20,19 @@ async function createStrategy(req, res) {
   });
 
   const user = await userModel.findById(req.user.id);
-  await sendUserEmailNotification(user, {
-    subject: `Strategy saved: ${strategy.name}`,
-    title: 'Strategy saved',
-    message: `Your strategy "${strategy.name}" was saved successfully.`,
-    details: [
-      strategy.description ? `Description: ${strategy.description}` : null,
-      `Strategy ID: ${strategy.id}`,
-    ],
-  });
+  if (user) {
+    sendUserEmailNotification(user, {
+      subject: `Strategy saved: ${strategy.name}`,
+      title: 'Strategy saved',
+      message: `Your strategy "${strategy.name}" was saved successfully.`,
+      details: [
+        strategy.description ? `Description: ${strategy.description}` : null,
+        `Strategy ID: ${strategy.id}`,
+      ],
+    }).catch((error) => {
+      console.error('strategyController: failed to send strategy saved notification', error?.message || error);
+    });
+  }
 
   return res.status(201).json(strategy);
 }
@@ -52,12 +56,16 @@ async function updateStrategy(req, res) {
   }
 
   const user = await userModel.findById(req.user.id);
-  await sendUserEmailNotification(user, {
-    subject: `Strategy updated: ${updated.name}`,
-    title: 'Strategy updated',
-    message: `Your strategy "${updated.name}" was updated successfully.`,
-    details: [`Strategy ID: ${updated.id}`],
-  });
+  if (user) {
+    sendUserEmailNotification(user, {
+      subject: `Strategy updated: ${updated.name}`,
+      title: 'Strategy updated',
+      message: `Your strategy "${updated.name}" was updated successfully.`,
+      details: [`Strategy ID: ${updated.id}`],
+    }).catch((error) => {
+      console.error('strategyController: failed to send strategy updated notification', error?.message || error);
+    });
+  }
 
   return res.json(updated);
 }

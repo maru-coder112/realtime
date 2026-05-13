@@ -13,6 +13,14 @@ const navItems = [
 ];
 
 function Icon({ name }) {
+  if (name === 'menu') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h16M4 12h16M4 17h16" />
+      </svg>
+    );
+  }
+
   if (name === 'dash') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -85,21 +93,15 @@ function Icon({ name }) {
   );
 }
 
-export default function SideNav({ open = false, onClose }) {
+export default function SideNav({ open = false, onClose, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   const items = navItems.filter((item) => !item.adminOnly || user?.role === 'admin');
 
   const handleNavigate = (path) => {
     navigate(path);
-    if (onClose) onClose();
-  };
-
-  const handleLogout = () => {
-    if (logout) logout();
-    navigate('/login');
     if (onClose) onClose();
   };
 
@@ -121,8 +123,19 @@ export default function SideNav({ open = false, onClose }) {
         transition={{ duration: 0.22, ease: 'easeOut' }}
       >
         <div className="side-nav-brand">
+          {onToggle ? (
+            <button
+              type="button"
+              className="icon-btn side-nav-menu-btn"
+              onClick={onToggle}
+              aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
+              title={open ? 'Collapse sidebar' : 'Expand sidebar'}
+            >
+              <Icon name="menu" />
+            </button>
+          ) : null}
           <div className="brand-mark">RT</div>
-          <div>
+          <div className="side-nav-brand-copy">
             <p className="side-nav-label">Realtime Terminal</p>
             <p className="muted side-nav-subtitle">Market intelligence</p>
           </div>
@@ -151,14 +164,6 @@ export default function SideNav({ open = false, onClose }) {
             <p className="side-nav-user">{user?.username || 'Trader'}</p>
             <p className="muted side-nav-role">{user?.role || 'user'}</p>
           </div>
-          <button type="button" className="nav-btn nav-logout-btn nav-logout-btn-compact" onClick={handleLogout}>
-            <span aria-hidden>
-              <svg viewBox="0 0 24 24">
-                <path d="M10 17 15 12 10 7M15 12H5m10-7h4v14h-4" />
-              </svg>
-            </span>
-            <span>Logout</span>
-          </button>
         </div>
       </motion.aside>
     </>

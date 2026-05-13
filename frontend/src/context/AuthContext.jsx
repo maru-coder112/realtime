@@ -15,34 +15,6 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      // Local development shortcut: if running on localhost and the server
-      // responds with auth failures, decode the token payload and use it
-      // as a fallback user to allow UI visual checks without a live session.
-      try {
-        if (typeof window !== 'undefined' && window.location && window.location.port) {
-          const payload = (token || '').split('.')[1] || '';
-          if (payload) {
-            try {
-              const json = JSON.parse(decodeURIComponent(escape(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))));
-              const fallback = {
-                id: json.id || json.sub || null,
-                email: json.email || null,
-                role: json.role || 'user',
-              };
-              if (fallback.id) {
-                setUser(fallback);
-                setLoading(false);
-                return;
-              }
-            } catch (e) {
-              // ignore decode errors and continue to normal flow
-            }
-          }
-        }
-      } catch (e) {
-        // ignore local dev shortcut failures
-      }
-
       try {
         const { data } = await api.get('/api/auth/me');
         setUser(data.user);

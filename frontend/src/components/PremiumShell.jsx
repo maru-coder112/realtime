@@ -23,15 +23,17 @@ export default function PremiumShell({ title, subtitle, className = '', children
   return (
     <div className={`premium-shell ${className}`.trim()}>
       <TradingBackground />
-      <SideNav open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <SideNav
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onToggle={() => setSidebarOpen((prev) => !prev)}
+      />
 
       <div className="premium-shell-main">
         <TopNav
           title={title}
           subtitle={subtitle}
           className="premium-topbar"
-          onMenuToggle={() => setSidebarOpen((prev) => !prev)}
-          menuOpen={sidebarOpen}
         />
 
         <motion.main
